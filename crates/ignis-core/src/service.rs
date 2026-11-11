@@ -165,6 +165,8 @@ pub struct MotorOptions {
     pub catalog_override: Option<Catalog>,
     /// Manifesto de motores alternativo (testes).
     pub manifest_override: Option<EngineManifest>,
+    /// Testar a velocidade sozinho quando a placa/driver mudar (desligado nos testes).
+    pub auto_teste: bool,
 }
 
 impl Default for MotorOptions {
@@ -176,6 +178,7 @@ impl Default for MotorOptions {
             load_timeout: Duration::from_secs(180),
             catalog_override: None,
             manifest_override: None,
+            auto_teste: true,
         }
     }
 }
@@ -212,6 +215,8 @@ pub struct Motor {
     tick: Duration,
     load_timeout: Duration,
     background: AtomicBool,
+    bench_running: AtomicBool,
+    auto_teste: bool,
     pub shutdown: CancellationToken,
 }
 
@@ -292,6 +297,8 @@ impl Motor {
             tick: opts.tick,
             load_timeout: opts.load_timeout,
             background: AtomicBool::new(false),
+            bench_running: AtomicBool::new(false),
+            auto_teste: opts.auto_teste,
             shutdown: CancellationToken::new(),
             paths,
         })
@@ -435,6 +442,9 @@ impl Motor {
 
     /// Depois de detectar: se a placa/driver mudou e já temos tudo, testa de novo sozinho.
     async fn after_detection(self: &Arc<Self>, det: &Detection) {
+        if !self.auto_teste {
+            return;
+        }
         let teste_atual = self.bench_is_current(det);
         let tem_teste_antigo = self.estado.lock().unwrap().teste.is_some();
         if teste_atual {
@@ -608,6 +618,14 @@ impl Motor {
     pub async fn ensure_loaded(self: &Arc<Self>, model_id: &str) -> Result<CarregadoInfo, MotorError> {
         if self.is_paused() {
             return Err(MotorError::Pausado);
+        }
+        // durante o teste de velocidade a placa está ocupada: espera terminar
+        let t0 = std::time::Instant::now();
+        while self.bench_running.load(Ordering::SeqCst) {
+            if t0.elapsed() > Duration::from_secs(240) {
+                return Err(MotorError::Ocupado("O teste de velocidade ainda está rodando. Tente de novo em instantes.".into()));
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
         let mut guard = self.loaded.lock().await;
         if self.is_paused() {
@@ -1166,7 +1184,7 @@ impl Motor {
 
     /// Roda o teste de velocidade em segundo plano.
     pub fn run_benchmark(self: &Arc<Self>) {
-        if matches!(self.fase.read().unwrap().0, Fase::Testando) {
+        if self.bench_running.load(Ordering::SeqCst) {
             return;
         }
         let me = self.clone();
@@ -1174,6 +1192,16 @@ impl Motor {
     }
 
     async fn benchmark_inner(self: &Arc<Self>) {
+        if self.bench_running.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        struct Release<'a>(&'a AtomicBool);
+        impl Drop for Release<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::SeqCst);
+            }
+        }
+        let _release = Release(&self.bench_running);
         if self.ativos() > 0 {
             self.aviso("info", "O teste de velocidade espera as conversas em andamento terminarem…");
             while self.ativos() > 0 {
@@ -1225,6 +1253,10 @@ impl Motor {
             ),
             None => self.aviso("erro", "Nenhum motor funcionou no teste. Veja os detalhes na seção Placa."),
         }
+    }
+
+    pub fn bench_running(&self) -> bool {
+        self.bench_running.load(Ordering::SeqCst)
     }
 
     pub fn bench(&self) -> Option<TesteSalvo> {

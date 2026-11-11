@@ -162,6 +162,26 @@ impl EngineStore {
         self.installed(m, v).ok_or(InstallError::NoServer)
     }
 
+    /// Instala a partir de um executável local (testes com a placa simulada
+    /// e instalação manual). Copia o executável e os arquivos vizinhos indicados.
+    pub fn install_from_files(&self, m: &EngineManifest, v: &Variant, exe: &Path, extras: &[(&str, &[u8])]) -> std::io::Result<InstalledEngine> {
+        let dir = self.variant_dir(&m.llama_cpp.versao, &v.id);
+        std::fs::create_dir_all(&dir)?;
+        let exe_name = server_exe_name();
+        std::fs::copy(exe, dir.join(exe_name))?;
+        for (name, bytes) in extras {
+            std::fs::write(dir.join(name), bytes)?;
+        }
+        let marker = Marker {
+            versao: m.llama_cpp.versao.clone(),
+            variante: v.id.clone(),
+            sha256: v.arquivos.iter().map(|a| a.sha256.to_lowercase()).collect(),
+            executavel: exe_name.to_string(),
+        };
+        crate::paths::write_json(&dir.join(MARKER), &marker)?;
+        self.installed(m, v).ok_or_else(|| std::io::Error::other("instalação manual falhou"))
+    }
+
     pub fn remove(&self, versao: &str, variante: &str) -> std::io::Result<()> {
         let d = self.variant_dir(versao, variante);
         if d.exists() {

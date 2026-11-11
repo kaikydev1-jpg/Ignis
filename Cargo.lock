@@ -276,9 +276,13 @@ dependencies = [
  "axum",
  "bytes",
  "futures-util",
+ "ignis-core",
+ "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
