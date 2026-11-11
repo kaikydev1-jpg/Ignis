@@ -1,0 +1,8 @@
+/target
+**/target
+*.part
+*.gguf
+/app/src-tauri/gen/schemas
+/dist
+.DS_Store
+*.log

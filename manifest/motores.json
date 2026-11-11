@@ -1,0 +1,245 @@
+{
+  "versao_manifesto": 1,
+  "llama_cpp": {
+    "versao": "b12271",
+    "numero": 12271,
+    "commit": "3e86ce2c2",
+    "licenca": "MIT"
+  },
+  "url_base": "https://github.com/ggml-org/llama.cpp/releases/download/b12271/",
+  "variantes": [
+    {
+      "id": "linux-cpu",
+      "so": "linux",
+      "arq": "x86_64",
+      "backend": "cpu",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-ubuntu-x64.tar.gz",
+          "sha256": "bc5b68b34bbca5b0c4d17cf162f3d699ee278e275f1afb2b09c9e0cefe41239f",
+          "tamanho": 23283012
+        }
+      ]
+    },
+    {
+      "id": "linux-vulkan",
+      "so": "linux",
+      "arq": "x86_64",
+      "backend": "vulkan",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-ubuntu-vulkan-x64.tar.gz",
+          "sha256": "c0dceb017716f5896bd07a7ecdc1f859ad77f5c4804c28883b7a27d51542124d",
+          "tamanho": 36107727
+        }
+      ],
+      "libs_do_sistema": [
+        "libvulkan.so.1"
+      ],
+      "dica_falta": "Instale o Vulkan do sistema. No Fedora: sudo dnf install vulkan-loader mesa-vulkan-drivers"
+    },
+    {
+      "id": "linux-rocm",
+      "so": "linux",
+      "arq": "x86_64",
+      "backend": "rocm",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-ubuntu-rocm-10.0-x64.tar.gz",
+          "sha256": "10c47c598272bf78a85d25b5c140cfdd422473629828400ab04d81b8f28e7d42",
+          "tamanho": 255784819
+        }
+      ],
+      "libs_do_sistema": [
+        "libamdhip64.so.7",
+        "librocblas.so.5",
+        "libhipblas.so.3"
+      ],
+      "alvos_gfx": [
+        "gfx908",
+        "gfx90a",
+        "gfx942",
+        "gfx950",
+        "gfx1010",
+        "gfx1011",
+        "gfx1012",
+        "gfx1030",
+        "gfx1031",
+        "gfx1032",
+        "gfx1033",
+        "gfx1034",
+        "gfx1035",
+        "gfx1036",
+        "gfx1100",
+        "gfx1101",
+        "gfx1102",
+        "gfx1103",
+        "gfx1150",
+        "gfx1151",
+        "gfx1152",
+        "gfx1200",
+        "gfx1201"
+      ],
+      "dica_falta": "Instale o ROCm dos repositórios do Fedora: sudo dnf install rocm-hip hipblas rocblas  — e coloque seu usuário nos grupos render e video (sudo usermod -aG render,video $USER), depois reinicie a sessão."
+    },
+    {
+      "id": "linux-cuda-12",
+      "so": "linux",
+      "arq": "x86_64",
+      "backend": "cuda",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-ubuntu-cuda-12.8-x64.tar.gz",
+          "sha256": "ff0762d77daff50cc06422cb4440fc4553fb1af21aa33bcf3ebc9a5a0428ebf9",
+          "tamanho": 188358839
+        },
+        {
+          "nome": "cudart-llama-b12271-bin-ubuntu-cuda-12.8-x64.tar.gz",
+          "sha256": "dbb6564d99010ba3a0326cb3f049c21b64ba49bc49d6c9e4024cd582a50001d7",
+          "tamanho": 594371477
+        }
+      ],
+      "driver_minimo": "525.60",
+      "dica_falta": "Instale o driver da NVIDIA (versão 525 ou mais nova)."
+    },
+    {
+      "id": "linux-cuda-13",
+      "so": "linux",
+      "arq": "x86_64",
+      "backend": "cuda",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-ubuntu-cuda-13.5-x64.tar.gz",
+          "sha256": "d194a870d53fd55c85908eec9eb1a78eb3dc26dc7295316bd35850568d0c1022",
+          "tamanho": 169847371
+        },
+        {
+          "nome": "cudart-llama-b12271-bin-ubuntu-cuda-13.5-x64.tar.gz",
+          "sha256": "4de2b28cc7420cc1631c61042dad3bd9516f4e4aba8a7c41fac0c4fcc468cbdf",
+          "tamanho": 444078945
+        }
+      ],
+      "driver_minimo": "580.00",
+      "dica_falta": "Atualize o driver da NVIDIA para a versão 580 ou mais nova."
+    },
+    {
+      "id": "windows-cpu",
+      "so": "windows",
+      "arq": "x86_64",
+      "backend": "cpu",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-win-cpu-x64.zip",
+          "sha256": "572180551df20b0e724a7d8bf927f8e6880d02cc47670900c06b2b99e881ad61",
+          "tamanho": 25054872
+        }
+      ]
+    },
+    {
+      "id": "windows-vulkan",
+      "so": "windows",
+      "arq": "x86_64",
+      "backend": "vulkan",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-win-vulkan-x64.zip",
+          "sha256": "4f48e33221ca9da6eefa2793ea39529ec80542b2ece03206596620a790c26849",
+          "tamanho": 38018398
+        }
+      ],
+      "libs_do_sistema": [
+        "vulkan-1.dll"
+      ],
+      "dica_falta": "Atualize o driver da placa de vídeo pelo site do fabricante (AMD, NVIDIA ou Intel)."
+    },
+    {
+      "id": "windows-rocm",
+      "so": "windows",
+      "arq": "x86_64",
+      "backend": "rocm",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-win-rocm-10.0-x64.zip",
+          "sha256": "018a89366ba7fd3acfa8a0ef59758956b9fad1448078a90db1325ed2643686dc",
+          "tamanho": 267660658
+        }
+      ],
+      "alvos_gfx": [
+        "gfx1010",
+        "gfx1011",
+        "gfx1012",
+        "gfx1030",
+        "gfx1031",
+        "gfx1032",
+        "gfx1033",
+        "gfx1034",
+        "gfx1035",
+        "gfx1036",
+        "gfx1100",
+        "gfx1101",
+        "gfx1102",
+        "gfx1103",
+        "gfx1150",
+        "gfx1151",
+        "gfx1152",
+        "gfx1153",
+        "gfx1200",
+        "gfx1201"
+      ],
+      "dica_falta": "Atualize o driver AMD Adrenalin para a versão mais recente.",
+      "alvos_gfx_oficiais": [
+        "gfx1030",
+        "gfx1031",
+        "gfx1032",
+        "gfx1100",
+        "gfx1101",
+        "gfx1102",
+        "gfx1150",
+        "gfx1151",
+        "gfx1200",
+        "gfx1201"
+      ],
+      "nota": "Lista oficial da AMD (HIP SDK para Windows) cruzada com os alvos compilados pelo llama.cpp. Placas fora dela usam Vulkan."
+    },
+    {
+      "id": "windows-cuda-12",
+      "so": "windows",
+      "arq": "x86_64",
+      "backend": "cuda",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-win-cuda-12.4-x64.zip",
+          "sha256": "b62a25d113165a2e4b2c75e0eff530a0226464c86c346bace5038167b0f27f5f",
+          "tamanho": 288969928
+        },
+        {
+          "nome": "cudart-llama-bin-win-cuda-12.4-x64.zip",
+          "sha256": "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6",
+          "tamanho": 391443627
+        }
+      ],
+      "driver_minimo": "527.41",
+      "dica_falta": "Atualize o driver da NVIDIA (versão 528 ou mais nova)."
+    },
+    {
+      "id": "windows-cuda-13",
+      "so": "windows",
+      "arq": "x86_64",
+      "backend": "cuda",
+      "arquivos": [
+        {
+          "nome": "llama-b12271-bin-win-cuda-13.5-x64.zip",
+          "sha256": "d27735844ff533740984061193c5149ba1462946d0b7e0dbabc0114fe90cc3cd",
+          "tamanho": 171026226
+        },
+        {
+          "nome": "cudart-llama-bin-win-cuda-13.5-x64.zip",
+          "sha256": "c2bf4cc202bfbaaa7a0b75f5082457c3811326947bb216059b72839d844e9cba",
+          "tamanho": 426314199
+        }
+      ],
+      "driver_minimo": "580.00",
+      "dica_falta": "Atualize o driver da NVIDIA para a versão 580 ou mais nova."
+    }
+  ]
+}
