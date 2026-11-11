@@ -102,7 +102,10 @@
         }
       ],
       "driver_minimo": "525.60",
-      "dica_falta": "Instale o driver da NVIDIA (versão 525 ou mais nova)."
+      "dica_falta": "Instale o driver da NVIDIA (versão 525 ou mais nova).",
+      "libs_do_sistema": [
+        "libcuda.so.1"
+      ]
     },
     {
       "id": "linux-cuda-13",
@@ -122,7 +125,10 @@
         }
       ],
       "driver_minimo": "580.00",
-      "dica_falta": "Atualize o driver da NVIDIA para a versão 580 ou mais nova."
+      "dica_falta": "Atualize o driver da NVIDIA para a versão 580 ou mais nova.",
+      "libs_do_sistema": [
+        "libcuda.so.1"
+      ]
     },
     {
       "id": "windows-cpu",
@@ -221,7 +227,10 @@
         }
       ],
       "driver_minimo": "527.41",
-      "dica_falta": "Atualize o driver da NVIDIA (versão 528 ou mais nova)."
+      "dica_falta": "Atualize o driver da NVIDIA (versão 528 ou mais nova).",
+      "libs_do_sistema": [
+        "nvcuda.dll"
+      ]
     },
     {
       "id": "windows-cuda-13",
@@ -241,7 +250,10 @@
         }
       ],
       "driver_minimo": "580.00",
-      "dica_falta": "Atualize o driver da NVIDIA para a versão 580 ou mais nova."
+      "dica_falta": "Atualize o driver da NVIDIA para a versão 580 ou mais nova.",
+      "libs_do_sistema": [
+        "nvcuda.dll"
+      ]
     }
   ]
 }
