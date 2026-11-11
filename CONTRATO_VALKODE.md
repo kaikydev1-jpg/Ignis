@@ -71,6 +71,11 @@ Duas formas (use a que for mais fácil):
 Repasse direto (útil para completar código com FIM, ex.: modelo
 `qwen2.5-coder-1.5b`).
 
+### Imagens e áudio
+Modelos instalados com o arquivo de visão/áudio (`ignis.visao` em `/motor/modelos`)
+aceitam mensagens no formato da OpenAI com `image_url` (e áudio, quando o modelo
+suporta), repassadas ao llama-server com `--mmproj`.
+
 ### `POST /v1/embeddings`
 Só com modelo de embeddings (ex.: `qwen3-embedding-0.6b`). Sem `model` → usa o
 modelo de embeddings instalado. Modelo de conversa → 400 explicando.
@@ -118,6 +123,11 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `POST /motor/motores/forcar` `{"variante":"linux-vulkan"}` ou `{"variante":null}` | Força um motor (ou volta ao automático) |
 | `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes_sozinho`, `llama_server_proprio`, `modelo_padrao`) |
 | `GET /motor/atualizacoes`, `POST /motor/atualizacoes/procurar`, `POST /motor/atualizacoes/aplicar` `{"item":"motor"\|"catalogo"}` | Atualizações (nunca no meio de uma conversa) |
+| `GET /motor/hf/buscar?q=qwen3` | Busca qualquer modelo GGUF no Hugging Face (`repo`, `downloads`, `licenca`, `pede_aceite`, `multimodal`) |
+| `GET /motor/hf/repo?repo=dono/nome` | Versões (quantizações) de um repositório, com tamanho, partes, arquivo de visão/áudio (`mmproj`) e uma estimativa de "cabe na placa" |
+| `POST /motor/hf/info` `{"repo","revisao","arquivo"}` | Lê o cabeçalho do arquivo pela internet (sem baixar tudo) e diz exatamente se cabe |
+| `POST /motor/hf/baixar` `{"repo","arquivo","mmproj":null}` | Baixa qualquer modelo (todas as partes, com o `mmproj` se pedido); o id instalado fica `hf/<dono>/<nome>/<arquivo>` |
+| `GET /motor/hf/conta` / `POST /motor/hf/conta` `{"token":"hf_..."}` | Conta da pessoa no Hugging Face (só para modelos que pedem aceite dos termos). O token fica só no computador e só vai ao huggingface.co; `{"token":""}` desconecta |
 | `GET /motor/relatorio` | Diagnóstico completo (detecção, candidatos, teste) |
 | `GET /motor/registro` | Últimas linhas do registro do llama-server |
 

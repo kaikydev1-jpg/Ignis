@@ -7,183 +7,273 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topo">
-    <div class="marca"><img src="icone.png" alt="" width="22" height="22"> Ignis</div>
-    <div id="situacao" class="pilula">…</div>
-  </header>
-
-  <div id="aviso" class="aviso escondido" role="status">
-    <span id="aviso-texto"></span>
-    <button class="link" id="aviso-fechar" title="Fechar aviso">×</button>
-  </div>
-
-  <div class="corpo">
+<div class="app">
+  <aside class="lateral">
+    <div class="marca">
+      <img src="icone.png" alt="" width="28" height="28">
+      <span>Ignis</span>
+    </div>
     <nav class="menu" aria-label="Seções">
-      <button data-secao="placa" class="ativo">Placa</button>
-      <button data-secao="modelos">Modelos</button>
-      <button data-secao="motor">Motor</button>
-      <button data-secao="status">Status</button>
+      <button data-secao="placa" class="ativo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2.5V6M15 2.5V6M9 18v3.5M15 18v3.5M2.5 9H6M2.5 15H6M18 9h3.5M18 15h3.5"/></svg>
+        <span>Placa</span>
+      </button>
+      <button data-secao="modelos">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
+        <span>Modelos</span>
+      </button>
+      <button data-secao="motor">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        <span>Motor</span>
+      </button>
+      <button data-secao="status">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12L16 12h5"/></svg>
+        <span>Status</span>
+      </button>
     </nav>
+    <div class="rodape" id="rodape">
+      <span class="ponto" id="rodape-ponto"></span>
+      <div>
+        <strong id="rodape-titulo">Iniciando…</strong>
+        <small id="rodape-sub"></small>
+      </div>
+    </div>
+  </aside>
 
-    <main>
-      <section id="preparar" class="cartao destaque escondido">
-        <h2>Preparar o Ignis para a sua placa</h2>
-        <p id="preparar-texto"></p>
-        <ul id="preparar-lista" class="lista-simples"></ul>
-        <div class="acoes">
-          <button id="btn-preparar" class="primario">Preparar agora</button>
+  <main id="principal">
+    <div id="aviso" class="aviso" role="status" hidden>
+      <span class="aviso-icone" aria-hidden="true"></span>
+      <span id="aviso-texto"></span>
+      <button class="fechar" id="aviso-fechar" title="Fechar aviso" aria-label="Fechar aviso">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+
+    <!-- Primeiro uso -->
+    <section id="guia" class="guia" hidden>
+      <div class="guia-topo">
+        <div>
+          <h2>Vamos deixar o Ignis pronto</h2>
+          <p>Três passos e você já pode conversar com um modelo rodando no seu computador.</p>
+        </div>
+        <button class="botao texto" id="guia-ocultar">Ocultar</button>
+      </div>
+      <ol class="passos" id="guia-passos"></ol>
+    </section>
+
+    <!-- PLACA -->
+    <section id="sec-placa" class="secao">
+      <header class="cabecalho">
+        <h1>Placa</h1>
+        <p>A sua placa de vídeo e o motor mais rápido para ela.</p>
+      </header>
+      <article class="placa" id="placa"></article>
+      <section class="grupo">
+        <div class="grupo-topo">
+          <h2>Velocidade dos motores</h2>
+          <button class="botao" id="btn-testar">Testar de novo</button>
+        </div>
+        <div class="caixa" id="velocidades"></div>
+        <p class="nota" id="teste-nota"></p>
+      </section>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Motores para este computador</h2></div>
+        <div class="caixa" id="candidatos"></div>
+      </section>
+    </section>
+
+    <!-- MODELOS -->
+    <section id="sec-modelos" class="secao" hidden>
+      <header class="cabecalho">
+        <h1>Modelos</h1>
+        <p>Baixe modelos que cabem na sua placa. Tudo roda neste computador, sem internet depois de baixar.</p>
+      </header>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Instalados</h2></div>
+        <div class="caixa" id="instalados"></div>
+      </section>
+      <section class="grupo" id="grupo-tarefas" hidden>
+        <div class="grupo-topo"><h2>Baixando</h2></div>
+        <div class="caixa" id="tarefas"></div>
+      </section>
+      <section class="grupo">
+        <div class="grupo-topo">
+          <h2 id="titulo-catalogo">Para a sua placa</h2>
+          <label class="interruptor-rotulo">
+            <span>Só os que rodam bem</span>
+            <input type="checkbox" class="interruptor" id="so-bons" checked>
+          </label>
+        </div>
+        <div class="filtros" role="tablist" aria-label="Tipo de modelo">
+          <button class="filtro ativo" data-tipo="todos">Todos</button>
+          <button class="filtro" data-tipo="conversa">Conversa</button>
+          <button class="filtro" data-tipo="codigo">Código</button>
+          <button class="filtro" data-tipo="embeddings">Busca por significado</button>
+        </div>
+        <div class="grade" id="catalogo"></div>
+      </section>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Qualquer modelo do Hugging Face</h2></div>
+        <div class="caixa busca">
+          <div class="linha-campo">
+            <input type="search" id="hf-termo" placeholder="Ex.: qwen3 coder, gemma 3, llama 3.2" spellcheck="false">
+            <button class="botao primario" id="btn-hf-buscar">Buscar</button>
+          </div>
+          <p class="nota">Mostra modelos no formato GGUF, que o motor do Ignis roda. Alguns pedem para aceitar termos de uso: conecte a sua conta em Motor.</p>
+        </div>
+        <div class="caixa" id="hf-resultados" hidden></div>
+        <article class="repo" id="hf-repo" hidden></article>
+      </section>
+      <details class="mais" id="mais-opcoes">
+        <summary>
+          <span>Mais opções</span>
+          <small>Trazer modelos do Ollama ou usar um arquivo GGUF (opcional)</small>
+        </summary>
+        <div class="mais-corpo">
+          <h3>Já tem modelos no Ollama?</h3>
+          <p class="nota">O Ignis não precisa do Ollama. Se você já baixou modelos nele, pode trazê-los para cá sem baixar de novo. Nada é apagado do Ollama.</p>
+          <div class="acoes"><button class="botao" id="btn-ollama">Procurar modelos do Ollama</button></div>
+          <div class="caixa" id="ollama-lista" hidden></div>
+          <p class="nota" id="ollama-nota"></p>
+          <h3>Usar um arquivo GGUF</h3>
+          <div class="linha-campo">
+            <input type="text" id="arquivo-gguf" placeholder="Caminho do arquivo .gguf" spellcheck="false">
+            <button class="botao" id="btn-arquivo">Adicionar</button>
+          </div>
+          <div class="acoes"><button class="botao texto" id="btn-pasta-modelos">Abrir a pasta de modelos</button></div>
+        </div>
+      </details>
+    </section>
+
+    <!-- MOTOR -->
+    <section id="sec-motor" class="secao" hidden>
+      <header class="cabecalho">
+        <h1>Motor</h1>
+        <p>Como o Ignis roda os modelos e como ele se comporta no seu computador.</p>
+      </header>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Motor em uso</h2></div>
+        <div class="opcoes" id="escolha-motor" role="radiogroup" aria-label="Motor"></div>
+      </section>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Comportamento</h2></div>
+        <div class="caixa ajustes">
+          <label class="ajuste">
+            <div><strong>Abrir com o computador</strong><small>O Ignis inicia escondido perto do relógio.</small></div>
+            <input type="checkbox" class="interruptor" id="cfg-autostart">
+          </label>
+          <label class="ajuste">
+            <div><strong>Liberar a placa quando parado</strong><small>Descarrega o modelo depois de um tempo sem uso, para jogos e outros programas.</small></div>
+            <select id="cfg-descarregar">
+              <option value="0">Nunca</option>
+              <option value="5">Depois de 5 min</option>
+              <option value="10">Depois de 10 min</option>
+              <option value="15">Depois de 15 min</option>
+              <option value="30">Depois de 30 min</option>
+              <option value="60">Depois de 1 hora</option>
+            </select>
+          </label>
+          <label class="ajuste">
+            <div><strong>Tamanho da memória da conversa</strong><small>Quanto texto o modelo lembra de uma vez. O Ignis reduz se não couber.</small></div>
+            <select id="cfg-contexto">
+              <option value="2048">2.048 tokens</option>
+              <option value="4096">4.096 tokens</option>
+              <option value="8192">8.192 tokens</option>
+              <option value="16384">16.384 tokens</option>
+              <option value="32768">32.768 tokens</option>
+            </select>
+          </label>
+          <label class="ajuste">
+            <div><strong>Porta da API</strong><small>Usada pelos outros programas. Só funciona neste computador.</small></div>
+            <input type="number" id="cfg-porta" min="1024" max="65535" class="curto">
+          </label>
         </div>
       </section>
-
-      <!-- PLACA -->
-      <section id="sec-placa" class="secao">
-        <div class="cartao">
-          <h2>Sua placa de vídeo</h2>
-          <dl id="placa-dados" class="dados"></dl>
-          <div class="acoes">
-            <button id="btn-detectar">Detectar de novo</button>
-            <button id="btn-relatorio">Copiar relatório</button>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Conta do Hugging Face</h2></div>
+        <div class="caixa ajustes">
+          <div class="ajuste" id="hf-conta-estado"><div><strong>Não conectada</strong><small>Opcional. Só é preciso para modelos que pedem para aceitar termos de uso.</small></div></div>
+          <div class="ajuste coluna">
+            <div class="linha-campo">
+              <input type="password" id="hf-token" placeholder="Cole aqui o seu token (começa com hf_)" spellcheck="false" autocomplete="off">
+              <button class="botao" id="btn-hf-token">Conectar</button>
+            </div>
+            <small>Crie um token de leitura em <button class="botao link" data-link="https://huggingface.co/settings/tokens">huggingface.co/settings/tokens</button>. Ele fica guardado só neste computador e só é enviado ao Hugging Face.</small>
           </div>
-        </div>
-        <div class="cartao">
-          <h2>Teste de velocidade</h2>
-          <p id="teste-situacao" class="nota"></p>
-          <table class="tabela">
-            <thead><tr><th>Motor</th><th>Leitura</th><th>Escrita</th><th>Resultado</th></tr></thead>
-            <tbody id="teste-tabela"></tbody>
-          </table>
-          <p class="nota">Velocidade em tokens por segundo (um token é mais ou menos ¾ de uma palavra). O Ignis usa o motor mais rápido que funcionou.</p>
-          <div class="acoes"><button id="btn-testar">Testar de novo</button></div>
-        </div>
-        <div class="cartao">
-          <h2>Motores para esta máquina</h2>
-          <ul id="candidatos" class="lista-motores"></ul>
         </div>
       </section>
-
-      <!-- MODELOS -->
-      <section id="sec-modelos" class="secao escondido">
-        <div class="cartao">
-          <h2>Instalados</h2>
-          <table class="tabela">
-            <thead><tr><th>Modelo</th><th>Tamanho</th><th>De onde veio</th><th>Na sua placa</th><th></th></tr></thead>
-            <tbody id="instalados"></tbody>
-          </table>
-          <p id="instalados-vazio" class="nota escondido">Nenhum modelo ainda. Escolha um nos recomendados abaixo.</p>
-        </div>
-        <div class="cartao" id="cartao-tarefas">
-          <h2>Downloads e cópias</h2>
-          <ul id="tarefas" class="lista-tarefas"></ul>
-        </div>
-        <div class="cartao">
-          <div class="titulo-linha">
-            <h2 id="titulo-recomendados">Recomendados para a sua placa</h2>
-            <label class="caixa"><input type="checkbox" id="mostrar-todos"> Mostrar todos</label>
-          </div>
-          <div id="catalogo" class="grade"></div>
-        </div>
-        <div class="cartao">
-          <h2>Trazer modelos do Ollama</h2>
-          <p class="nota">O Ignis lê a pasta do Ollama e oferece cada modelo. "Usar daqui" lê o arquivo no lugar (sem ocupar mais espaço); "Copiar" faz uma cópia. O Ignis nunca apaga nada do Ollama.</p>
-          <div class="acoes"><button id="btn-ollama">Procurar modelos do Ollama</button></div>
-          <table class="tabela escondido" id="ollama-tabela">
-            <thead><tr><th>Modelo</th><th>Tamanho</th><th></th></tr></thead>
-            <tbody id="ollama-lista"></tbody>
-          </table>
-          <p id="ollama-nota" class="nota"></p>
-        </div>
-        <div class="cartao">
-          <h2>Usar um arquivo GGUF que você já tem</h2>
-          <div class="linha-form">
-            <input type="text" id="arquivo-gguf" placeholder="Caminho do arquivo .gguf">
-            <button id="btn-arquivo">Adicionar</button>
-          </div>
-          <div class="acoes"><button class="link" id="btn-pasta-modelos">Abrir a pasta de modelos</button></div>
-        </div>
-      </section>
-
-      <!-- MOTOR -->
-      <section id="sec-motor" class="secao escondido">
-        <div class="cartao">
-          <h2>Escolha do motor</h2>
-          <p class="nota">No automático, o Ignis usa o mais rápido do teste e, se ele falhar, passa para o próximo sozinho.</p>
-          <div id="escolha-motor" class="opcoes"></div>
-        </div>
-        <div class="cartao">
-          <h2>Versões</h2>
-          <dl id="versoes" class="dados"></dl>
-        </div>
-        <div class="cartao">
+      <section class="grupo">
+        <div class="grupo-topo">
           <h2>Atualizações</h2>
-          <p class="nota">O aplicativo, os motores e o catálogo de modelos atualizam cada um no seu ritmo. Nada é atualizado sem você aceitar, e nunca no meio de uma conversa.</p>
-          <div id="atualizacao-info"></div>
-          <div class="acoes"><button id="btn-procurar-att">Procurar atualizações</button></div>
-          <label class="caixa"><input type="checkbox" id="cfg-att-auto"> Procurar atualizações sozinho uma vez por semana</label>
+          <button class="botao" id="btn-procurar-att">Procurar agora</button>
         </div>
-        <div class="cartao">
-          <h2>Configurações</h2>
-          <div class="form">
-            <label>Porta da API (só neste computador)
-              <input type="number" id="cfg-porta" min="1024" max="65535">
-            </label>
-            <label>Descarregar o modelo depois de quantos minutos parado (0 = nunca)
-              <input type="number" id="cfg-descarregar" min="0" max="1440">
-            </label>
-            <label>Tamanho do contexto desejado
-              <select id="cfg-contexto">
-                <option value="2048">2.048 tokens</option>
-                <option value="4096">4.096 tokens</option>
-                <option value="8192">8.192 tokens</option>
-                <option value="16384">16.384 tokens</option>
-                <option value="32768">32.768 tokens</option>
-              </select>
-            </label>
-            <label class="caixa"><input type="checkbox" id="cfg-autostart"> Abrir o Ignis junto com o computador</label>
-            <label>llama-server próprio (opcional)
-              <input type="text" id="cfg-proprio" placeholder="Deixe vazio para usar só os motores oficiais">
-            </label>
-          </div>
-          <div class="acoes"><button id="btn-salvar-cfg" class="primario">Salvar</button></div>
-          <p id="dica-gnome" class="nota escondido">No GNOME puro (Fedora Workstation/Silverblue), o ícone perto do relógio só aparece com a extensão
-            <button class="link" data-link="https://extensions.gnome.org/extension/615/appindicator-support/">AppIndicator</button>.</p>
+        <div class="caixa ajustes">
+          <div class="ajuste" id="att-info"><div><strong>Nenhuma verificação ainda</strong><small>O aplicativo, o motor e o catálogo atualizam separados. Nada muda sem você aceitar.</small></div></div>
+          <label class="ajuste">
+            <div><strong>Procurar sozinho toda semana</strong><small>Desligado por padrão: o Ignis só se conecta quando você pede.</small></div>
+            <input type="checkbox" class="interruptor" id="cfg-att-auto">
+          </label>
         </div>
       </section>
+      <details class="mais">
+        <summary><span>Avançado</span><small>Usar um llama-server seu</small></summary>
+        <div class="mais-corpo">
+          <p class="nota">Se você compilou o llama.cpp do seu jeito, indique o executável. Ele entra no teste de velocidade junto com os motores do Ignis.</p>
+          <div class="linha-campo">
+            <input type="text" id="cfg-proprio" placeholder="Caminho do llama-server" spellcheck="false">
+            <button class="botao" id="btn-proprio">Salvar</button>
+          </div>
+        </div>
+      </details>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Sobre</h2></div>
+        <div class="caixa ajustes" id="sobre"></div>
+        <p class="nota escondido" id="dica-gnome">No GNOME, o ícone perto do relógio aparece com a extensão
+          <button class="botao link" data-link="https://extensions.gnome.org/extension/615/appindicator-support/">AppIndicator</button>.</p>
+      </section>
+    </section>
 
-      <!-- STATUS -->
-      <section id="sec-status" class="secao escondido">
-        <div class="cartao">
-          <h2 id="status-titulo">…</h2>
-          <p id="status-texto" class="nota"></p>
-          <dl id="status-dados" class="dados"></dl>
-          <div class="acoes">
-            <button id="btn-pausar">Pausar</button>
-            <button id="btn-descarregar">Descarregar modelo</button>
-            <button id="btn-parar">Parar conversas</button>
+    <!-- STATUS -->
+    <section id="sec-status" class="secao" hidden>
+      <header class="cabecalho">
+        <h1>Status</h1>
+        <p>O que o Ignis está fazendo agora.</p>
+      </header>
+      <article class="status" id="status-cartao"></article>
+      <div class="medidas" id="medidas"></div>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Usar em outros programas</h2></div>
+        <div class="caixa caixa-uso">
+          <p>No Valkode ou em qualquer programa compatível com a OpenAI, use este endereço (qualquer chave serve):</p>
+          <div class="linha-campo">
+            <input type="text" id="endereco" readonly class="mono">
+            <button class="botao" id="btn-copiar-endereco">Copiar endereço</button>
           </div>
-        </div>
-        <div class="cartao">
-          <h2>Endereço para outros programas</h2>
-          <div class="linha-form">
-            <input type="text" id="endereco" readonly>
-            <button id="btn-copiar-endereco">Copiar</button>
+          <div class="abas" role="tablist">
+            <button class="aba ativo" data-exemplo="curl">curl</button>
+            <button class="aba" data-exemplo="python">Python</button>
+            <button class="aba" data-exemplo="js">JavaScript</button>
           </div>
-          <p class="nota">Compatível com a API da OpenAI. Use este endereço no Valkode ou em qualquer programa que aceite "OpenAI compatível".</p>
-        </div>
-        <div class="cartao">
-          <h2>Avisos recentes</h2>
-          <ul id="avisos" class="lista-avisos"></ul>
-        </div>
-        <div class="cartao">
-          <details id="registro-det">
-            <summary>Registro do motor</summary>
-            <pre id="registro"></pre>
-          </details>
-          <div class="acoes"><button class="link" id="btn-pasta-registros">Abrir a pasta de registros</button></div>
+          <div class="codigo">
+            <pre id="exemplo"></pre>
+            <button class="botao pequeno" id="btn-copiar-exemplo">Copiar</button>
+          </div>
         </div>
       </section>
-    </main>
-  </div>
-
-  <script src="app.js"></script>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Avisos</h2></div>
+        <div class="caixa" id="avisos"></div>
+      </section>
+      <details class="mais" id="registro-det">
+        <summary><span>Registro do motor</span><small>Últimas linhas, para diagnóstico</small></summary>
+        <div class="mais-corpo">
+          <pre id="registro" class="registro"></pre>
+          <div class="acoes"><button class="botao texto" id="btn-pasta-registros">Abrir a pasta de registros</button></div>
+        </div>
+      </details>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
 </body>
 </html>

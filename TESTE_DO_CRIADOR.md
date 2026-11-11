@@ -29,7 +29,10 @@ extensão AppIndicator.
   `sudo rpm-ostree install gnome-shell-extension-appindicator` e reinicie.
 - KDE (Kinoite, Bazzite KDE) já mostra o ícone sem extensão.
 
-## 1. Ícone na bandeja (Windows e Fedora)
+## 1. Ícone na bandeja e janela (Windows e Fedora)
+- A barra de título deve ser a **nativa do sistema** (a mesma de qualquer outro aplicativo do Windows ou do GNOME/KDE), clara ou escura conforme o sistema.
+- O visual da janela deve ser **igual** nos dois sistemas: mesma fonte, cores e layout.
+
 1. Abra o Ignis.
    - **Esperado:** ícone de chama perto do relógio e a janela aberta.
 2. Feche a janela no X.
@@ -79,6 +82,18 @@ extensão AppIndicator.
    curl http://127.0.0.1:11470/v1/chat/completions -H 'content-type: application/json' -d '{"model":"qwen3-8b","messages":[{"role":"user","content":"Explique o que é uma GPU em 2 frases. /no_think"}]}'
    ```
    - **Esperado:** a resposta chega, e em **Status** aparece a velocidade (tokens/s).
+
+## 3b. Qualquer modelo do Hugging Face
+1. Em **Modelos → Qualquer modelo do Hugging Face**, busque "gemma 3" e clique em **Ver arquivos** em `ggml-org/gemma-3-4b-it-GGUF`.
+   - **Esperado:** as versões (Q4_K_M, Q8_0, F16) com tamanho, e o interruptor "Incluir visão/áudio".
+2. Clique em **Ver se cabe** no Q4_K_M.
+   - **Esperado:** a avaliação muda de "(estimativa)" para o resultado exato.
+3. Baixe com "Incluir visão/áudio" ligado e carregue. Mande uma imagem pela API (formato OpenAI, `image_url` em base64).
+   - **Esperado:** o modelo descreve a imagem.
+4. Modelo que pede aceite: busque "google gemma qat gguf" e tente baixar `google/gemma-3-4b-it-qat-q4_0-gguf` **sem conta**.
+   - **Esperado:** a mensagem diz para aceitar os termos e conectar a conta.
+5. Aceite os termos no site e crie um token de leitura em huggingface.co/settings/tokens. Cole o token em **Motor → Conta do Hugging Face** e baixe de novo.
+   - **Esperado:** "Conectada como <seu usuário>" e o download funciona.
 
 ## 4. Queda para o próximo motor
 1. Com um modelo carregado numa placa (ROCm, CUDA ou Vulkan), mate o processo `llama-server` (Gerenciador de Tarefas, ou `pkill llama-server`).

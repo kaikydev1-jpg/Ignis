@@ -55,6 +55,12 @@ deles; o Ignis só lê os arquivos.
   modificação), BSD, ISC, Zlib, Unicode-3.0. Lista completa com versões:
   `AVISOS-DEPENDENCIAS.txt` (regerar com `scripts/listar_licencas.py`).
 
+## Fonte
+**Atkinson Hyperlegible Next** (Braille Institute / The Atkinson Hyperlegible Next
+Project Authors), licença **SIL Open Font License 1.1** — embutida na janela
+(`app/ui/fontes/`, com o texto da licença em `OFL.txt`) para a letra ficar
+igual no Windows e no Linux.
+
 ## Ícone
 O ícone de chama do Ignis foi desenhado para o projeto (licença MIT, como o resto).
 

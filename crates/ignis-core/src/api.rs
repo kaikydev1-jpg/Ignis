@@ -366,6 +366,8 @@ async fn modelos(State(m): M) -> Response {
                 "padrao": padrao.as_deref() == Some(x.id.as_str()), "licenca": x.licenca, "arquivo": x.arquivo,
                 "encaixe": plano.encaixe, "rotulo": plano.encaixe.rotulo(), "aviso": plano.aviso, "contexto": plano.contexto,
                 "memoria_placa_mb": plano.memoria_placa_mb, "memoria_ram_mb": plano.memoria_ram_mb,
+                "visao": x.mmproj.is_some(),
+                "tipo": if x.embeddings { "embeddings" } else { "conversa" },
             })
         })
         .collect();

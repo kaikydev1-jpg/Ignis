@@ -27,6 +27,20 @@ Depois disso: **pronto para testar** na placa real (TESTE_DO_CRIADOR.md).
   - janela clássica em português (Placa, Modelos, Motor, Status), clara ou escura conforme o sistema;
   - janela em **processo separado** (núcleo leve em repouso);
   - instância única.
+- **Qualquer modelo do Hugging Face**:
+  - busca dentro do app, com as versões de cada repositório, tamanho e se cabe (lendo o cabeçalho pela internet, sem baixar tudo);
+  - modelos em várias partes;
+  - visão/áudio via `--mmproj`;
+  - **conta da pessoa** (token) para modelos que pedem aceite dos termos: fica só no computador e só vai ao huggingface.co.
+- **Janela redesenhada** (igual no Windows e no Linux):
+  - fonte embutida (Atkinson Hyperlegible Next);
+  - barra de memória da placa mostrando onde o modelo cabe;
+  - primeiro uso guiado em 3 passos;
+  - velocidade dos motores em barras de "calor";
+  - catálogo com filtros e mini-barras de memória;
+  - status com velocidade e exemplos prontos (curl/Python/JS);
+  - sem menu de botão direito, zoom ou seleção solta de página;
+  - barra de título nativa do sistema.
 - **Placa simulada** (`crates/fake-llama-server`) e testes de ponta a ponta.
 - **`ignis-cli`**: `detectar`, `servir`, `gguf`, `ollama`, `versao`.
 - **CI** (`.github/workflows/ci.yml`): fmt, clippy `-D warnings` e testes em Linux e Windows, incluindo o llama-server oficial com modelo de 0,5 B.
@@ -39,8 +53,11 @@ Depois disso: **pronto para testar** na placa real (TESTE_DO_CRIADOR.md).
 ## Provas feitas (sem placa de vídeo)
 | O quê | Resultado |
 |---|---|
-| Testes automáticos | 97 passando (unidades, candidatos, detecção com fixtures, placa simulada, downloads/Ollama, llama-server oficial) |
-| CI GitHub Linux | fmt, clippy e todos os testes passaram (inclusive o llama-server oficial) |
+| Testes automáticos | 105 passando (unidades, candidatos, detecção com fixtures, placa simulada, downloads/Ollama, Hugging Face com servidor imitando o site, llama-server oficial) |
+| CI GitHub Linux **e Windows** | fmt, clippy e todos os testes passaram nos dois, inclusive o llama-server oficial rodando no Windows (resposta "Olá!", 44,8 tokens/s) |
+| Instaladores no CI | NSIS (Windows, com as DLLs do Visual C++), RPM (Fedora 44), .deb, AppImage e Flatpak gerados |
+| Hugging Face de verdade | busca, lista de versões e "ver se cabe" (lendo o cabeçalho real por Range) funcionaram pela janela |
+| Janela nova | conferida em capturas nos temas claro e escuro, no Chromium (motor do WebView2 do Windows) e no WebKitGTK (Linux): visual idêntico |
 | llama-server oficial b12271 (CPU) + Qwen2.5 0.5B | instalado e conferido por SHA-256; respondeu "Olá!" em 1,0 s; 44 tokens/s; Parar em 6 ms; descarregar por tempo; teste de velocidade |
 | Preparação real (GitHub + Hugging Face) | baixou o motor CPU e o Qwen3 0.6B, conferiu os SHA-256 e testou sozinho (39,6 tokens/s) |
 | App real em Xvfb | janela com as 4 seções (capturas de tela conferidas) |
@@ -63,6 +80,10 @@ Está em **TESTE_DO_CRIADOR.md**:
 ## Próxima ação exata
 1. Conferir o resultado do CI e dos Instaladores no GitHub Actions para o último commit. Se algo falhar no Windows, corrigir pelos logs.
 2. Quando tudo estiver verde, marcar "pronto para testar" aqui e avisar o criador.
+
+## Pendente com o criador
+- **Azura Voice** (app do criador): vai se conectar ao Ignis pela API (CONTRATO_VALKODE.md serve para qualquer app). Aguardando a lista do que falta no motor, vinda do chat que criou o Azura Voice, para atualizar o Ignis.
+- Modelos de gerar voz/música (TTS etc.) não rodam no llama.cpp; se o Azura Voice precisar, vira uma opção futura de "motor de áudio".
 
 ## Decisões tomadas
 | Assunto | Decisão | Motivo |
@@ -92,6 +113,10 @@ Está em **TESTE_DO_CRIADOR.md**:
 | Certificados | Se os do sistema falharem, usa a lista da Mozilla embutida | Antes travava (achado no teste do Flatpak) |
 | Fixtures de placas | Montadas no formato exato das ferramentas, com IDs reais; **não capturadas** em placa real | Não há placa aqui; o TESTE_DO_CRIADOR pede as saídas reais |
 | Catálogo | 11 modelos fixados por revisão do Hugging Face + SHA-256, todos sem login | Curto e escolhido a dedo |
+| Visual | Fonte embutida + mesmas cores e componentes nos dois sistemas; destaque visual único na barra de memória da placa; "calor" (âmbar→brasa) só nas barras de velocidade | Pedido do criador: muito mais bonito, fácil e **igual** no Windows e no Linux |
+| Barra de título | Nativa do sistema (o Ignis não desenha barra própria) | Pedido do criador: aparência de aplicativo nativo |
+| Ollama | Opcional e discreto ("Mais opções"); o Ignis nunca precisa dele | O motor e os modelos são do próprio Ignis |
+| Modelos com termos | Conta da pessoa (token do Hugging Face), guardada só no computador (arquivo `hf-token`, permissão 600 no Linux) | Cada pessoa usa a própria conta; o token só vai ao huggingface.co |
 | Contexto padrão | 8.192 tokens (reduz sozinho se não couber; mínimo 2.048) | Bom para conversa e código numa placa de 8 GB |
 
 ## Como testar
