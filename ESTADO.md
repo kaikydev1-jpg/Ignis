@@ -3,9 +3,12 @@
 > Toda retomada começa por aqui. Atualizado antes de cada pausa.
 
 ## Situação
-**PRONTO PARA TESTAR** na placa real: siga o TESTE_DO_CRIADOR.md.
-Instaladores: GitHub → Actions → workflow **Instaladores** (último commit) → artefatos
-`ignis-windows`, `ignis-fedora`, `ignis-flatpak`, `ignis-linux` (.deb e AppImage), `ignis-atualizacoes`.
+**Versão oficial 0.1.0 publicada** (GitHub Releases, sem login e sem prazo):
+https://github.com/kaikydev1-jpg/Ignis/releases/latest, com arquivos por sistema
+(`Ignis-Windows.exe`, `Ignis-Fedora.rpm`, `Ignis-Flatpak.flatpak`, `Ignis-Ubuntu-Debian.deb`,
+`Ignis-Linux.AppImage`, `SHA256SUMS.txt`, `atualizacoes.json`).
+Versões de teste continuam separadas: Actions → **Instaladores** (90 dias, pede login).
+Próximo passo: o criador roda o TESTE_DO_CRIADOR.md na placa real.
 
 ## O que está pronto
 - **Núcleo** (`crates/ignis-core`):
@@ -84,7 +87,7 @@ Está em **TESTE_DO_CRIADOR.md**:
 1. O criador roda o TESTE_DO_CRIADOR.md nas máquinas reais e manda o resultado (e o "Copiar relatório" onde algo der diferente).
 2. Trocar as fixtures de detecção pelas saídas reais capturadas (vulkaninfo/rocminfo/nvidia-smi).
 3. Quando o chat do Azura Voice disser o que falta no motor, atualizar o Ignis.
-4. Publicar: rodar o workflow **Instaladores** à mão com "publicar = sim" (cria um rascunho de release para revisar).
+4. Nova versão: subir `version` nos Cargo.toml/tauri.conf.json e rodar o workflow **Instaladores** à mão com "publicar = sim" (ou "rascunho" para revisar antes).
 
 ## Pendente com o criador
 - **Azura Voice** e **Valkode** (apps do criador): vão se conectar ao Ignis pela API. O **BRIEFING.md** explica tudo para eles (instalar, usar, ligar) e pede de volta, num formato fixo, a lista do que falta no motor. Aguardando essa lista para atualizar o Ignis.

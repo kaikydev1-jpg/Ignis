@@ -10,16 +10,16 @@ e cole o relatório junto com o que aconteceu.
 ---
 
 ## 0. Instalar
-Baixe os instaladores no GitHub Actions (workflow **Instaladores**, artefatos) ou
-no rascunho de release.
+Baixe na versão oficial: https://github.com/kaikydev1-jpg/Ignis/releases/latest
+(ou numa versão de teste, em Actions → Instaladores → Artifacts).
 
 | Sistema | Como instalar | Deve acontecer |
 |---|---|---|
-| Windows 10/11 | Rodar `Ignis_0.1.0_x64-setup.exe` | **Não** pede administrador. Ao terminar, o Ignis abre. |
-| Fedora 44 Workstation | `sudo dnf install ./Ignis-0.1.0-1.x86_64.rpm` | Instala puxando `webkit2gtk4.1` e `libayatana-appindicator-gtk3`. |
-| Fedora Atomic (Silverblue/Kinoite/Bazzite) | `flatpak install --user ./Ignis.flatpak` (recomendado) | Instala sem reiniciar. Abra pelo menu de aplicativos. |
-| Fedora Atomic, alternativa | `sudo rpm-ostree install ./Ignis-0.1.0-1.x86_64.rpm` e reiniciar | Funciona como no Fedora normal (e permite ROCm). |
-| Outras distros | `chmod +x Ignis_0.1.0_amd64.AppImage` e abrir | Abre sem instalar nada (não precisa de libfuse2). |
+| Windows 10/11 | Rodar `Ignis-Windows.exe` | **Não** pede administrador. Ao terminar, o Ignis abre. |
+| Fedora 44 Workstation | `sudo dnf install ./Ignis-Fedora.rpm` | Instala puxando `webkit2gtk4.1` e `libayatana-appindicator-gtk3`. |
+| Fedora Atomic (Silverblue/Kinoite/Bazzite) | `flatpak install --user ./Ignis-Flatpak.flatpak` (recomendado) | Instala sem reiniciar. Abra pelo menu de aplicativos. |
+| Fedora Atomic, alternativa | `sudo rpm-ostree install ./Ignis-Fedora.rpm` e reiniciar | Funciona como no Fedora normal (e permite ROCm). |
+| Outras distros | `chmod +x Ignis-Linux.AppImage` e abrir | Abre sem instalar nada (não precisa de libfuse2). |
 
 **GNOME (Fedora Workstation/Silverblue):** o ícone perto do relógio precisa da
 extensão AppIndicator.
@@ -58,7 +58,7 @@ extensão AppIndicator.
    - **Esperado:** o Ignis usa menos de 100 MB (≈60 MB no teste em Linux).
 
 ## 2. Preparar e testar a velocidade
-1. Na janela, clique em **Preparar agora**.
+1. Na janela, clique em **Preparar o Ignis**.
    - **Esperado:** baixa só os motores da sua placa e o Qwen3 0.6B (610 MB), depois "Testando o motor…" e um aviso "Teste concluído: o motor X foi o mais rápido".
 2. Veja a seção **Placa**.
    - **Esperado:** nome da placa, memória de vídeo, driver e tabela com tokens/s de cada motor.

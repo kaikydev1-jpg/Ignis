@@ -34,31 +34,28 @@ Ignis trocando só o endereço para `http://127.0.0.1:11470/v1`.
 
 | O quê | Link |
 |---|---|
-| Código | https://github.com/kaikydev1-jpg/Ignis/tree/claude/admiring-mendel-0vs7n5 |
-| Instaladores | https://github.com/kaikydev1-jpg/Ignis/actions/workflows/instaladores.yml |
+| Página do projeto | https://github.com/kaikydev1-jpg/Ignis |
+| **Baixar (versão oficial)** | https://github.com/kaikydev1-jpg/Ignis/releases/latest |
 | Contrato completo da API | https://github.com/kaikydev1-jpg/Ignis/blob/claude/admiring-mendel-0vs7n5/CONTRATO_VALKODE.md |
 | Testes na máquina real | https://github.com/kaikydev1-jpg/Ignis/blob/claude/admiring-mendel-0vs7n5/TESTE_DO_CRIADOR.md |
+| Versões de teste (Actions) | https://github.com/kaikydev1-jpg/Ignis/actions/workflows/instaladores.yml |
 
-**Como baixar os instaladores:**
-1. Entre na sua conta do GitHub.
-2. Abra o link "Instaladores" e clique na execução mais recente com ✓ verde.
-3. Role até **Artifacts**, no fim da página, e baixe o do seu sistema (tabela da
-   seção 3). Ele vem em `.zip`: extraia antes de instalar.
-
-Esses arquivos ficam lá por 14 dias. Ainda **não há release publicada** (com
-link permanente e download sem login); ela só é criada quando o criador pedir.
+A versão oficial baixa **sem login e sem prazo**. As versões de teste são
+geradas a cada mudança, pedem login no GitHub e ficam disponíveis 90 dias.
 
 ---
 
 ## 3. Como instalar
 
+Links diretos (sempre a última versão):
+
 | Sistema | Baixe | Como instalar |
 |---|---|---|
-| Windows 10/11 | `ignis-windows` | Rode `Ignis_0.1.0_x64-setup.exe`. Não pede administrador. |
-| Fedora 44 | `ignis-fedora` | `sudo dnf install ./Ignis-0.1.0-1.x86_64.rpm` |
-| Fedora Atomic (Silverblue, Kinoite, Bazzite) | `ignis-flatpak` | `flatpak install --user ./Ignis.flatpak` |
-| Ubuntu, Debian, Mint | `ignis-linux` | `sudo apt install ./Ignis_0.1.0_amd64.deb` |
-| Outras distros | `ignis-linux` | `chmod +x Ignis_0.1.0_amd64.AppImage` e abra o arquivo |
+| Windows 10/11 | [Ignis-Windows.exe](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Windows.exe) | Abra o arquivo. Não pede administrador. |
+| Fedora 44 | [Ignis-Fedora.rpm](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Fedora.rpm) | `sudo dnf install ./Ignis-Fedora.rpm` |
+| Fedora Atomic (Silverblue, Kinoite, Bazzite) | [Ignis-Flatpak.flatpak](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Flatpak.flatpak) | `flatpak install --user ./Ignis-Flatpak.flatpak` |
+| Ubuntu, Debian, Mint | [Ignis-Ubuntu-Debian.deb](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Ubuntu-Debian.deb) | `sudo apt install ./Ignis-Ubuntu-Debian.deb` |
+| Outras distros | [Ignis-Linux.AppImage](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Linux.AppImage) | `chmod +x Ignis-Linux.AppImage` e abra o arquivo |
 
 **Avisos:**
 - **Windows:** o instalador ainda não tem assinatura digital. Se aparecer "O
@@ -81,7 +78,7 @@ link permanente e download sem login); ela só é criada quando o criador pedir.
 
 ## 4. Como usar (para a pessoa)
 
-1. **Abra o Ignis.** Na primeira vez, clique em **Preparar agora**. Ele:
+1. **Abra o Ignis.** Na primeira vez, clique em **Preparar o Ignis**. Ele:
    - baixa só o motor da sua placa e um modelo pequeno de teste (Qwen3 0.6B,
      610 MB);
    - mede qual motor é mais rápido.
@@ -250,7 +247,7 @@ Formato da OpenAI, mais o campo `erro` com a mensagem em português:
 | HTTP | `code` | O que mostrar |
 |---|---|---|
 | sem resposta | — | "O Ignis não está aberto" |
-| 503 | `sem_motor` | "Abra o Ignis e clique em Preparar agora" |
+| 503 | `sem_motor` | "Abra o Ignis e clique em Preparar o Ignis" |
 | 503 | `sem_modelo` | "Baixe um modelo no Ignis" |
 | 503 | `ignis_pausado` | "O Ignis está pausado (retome pelo ícone perto do relógio)" |
 | 404 | `model_not_found` | listar `/v1/models` de novo e pedir para escolher |
@@ -328,8 +325,7 @@ A lista completa está no contrato (link na seção 2).
   - testes automáticos no Windows e no Linux;
   - o motor oficial respondendo nos dois sistemas;
   - downloads reais e busca no Hugging Face.
-- **Distribuição:** o instalador do Windows ainda não tem assinatura digital, e
-  ainda não há release publicada.
+- **Distribuição:** o instalador do Windows ainda não tem assinatura digital.
 
 ---
 
