@@ -1870,6 +1870,7 @@ name = "ignis-app"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "gtk",
  "ignis-core",
  "reqwest",
  "serde",

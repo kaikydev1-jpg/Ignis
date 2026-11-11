@@ -364,6 +364,40 @@ mod janela {
         app.opener().open_path(p.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
     }
 
+    /// O que o sistema diz sobre os botões da janela (lado, ordem, tema).
+    struct SistemaJanela(ignis_core::janela::Sistema);
+
+    fn sistema_da_janela() -> ignis_core::janela::Sistema {
+        let so = if cfg!(windows) {
+            "windows"
+        } else if cfg!(target_os = "macos") {
+            "mac"
+        } else {
+            "linux"
+        };
+        #[allow(unused_mut)]
+        let mut s = ignis_core::janela::Sistema {
+            so: so.into(),
+            desktop: std::env::var("XDG_CURRENT_DESKTOP").ok().filter(|d| !d.is_empty()),
+            ..Default::default()
+        };
+        #[cfg(target_os = "linux")]
+        {
+            use gtk::prelude::*;
+            // O GNOME e o KDE (e o portal, no Flatpak) preenchem estas configurações do GTK.
+            if let Some(cfg) = gtk::Settings::default() {
+                s.layout = cfg.property::<Option<String>>("gtk-decoration-layout");
+                s.tema = cfg.property::<Option<String>>("gtk-theme-name");
+            }
+        }
+        s
+    }
+
+    #[tauri::command]
+    fn botoes_janela(sis: tauri::State<'_, SistemaJanela>, preferido: Option<String>) -> ignis_core::janela::BotoesJanela {
+        ignis_core::janela::escolher(&sis.0, preferido.as_deref().unwrap_or("auto"))
+    }
+
     pub fn rodar(paths: Paths) {
         let (Ok(porta), Ok(senha)) = (std::env::var(ENV_PORTA), std::env::var(ENV_SENHA)) else {
             eprintln!("A janela do Ignis é aberta pelo próprio Ignis (ícone perto do relógio).");
@@ -376,8 +410,12 @@ mod janela {
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())
             .manage(canal)
-            .invoke_handler(tauri::generate_handler![api, abrir_link, abrir_pasta])
+            .invoke_handler(tauri::generate_handler![api, abrir_link, abrir_pasta, botoes_janela])
             .setup(move |app| {
+                // Na thread principal, com o GTK já iniciado.
+                let sistema = sistema_da_janela();
+                tracing::info!(?sistema, "botões da janela");
+                app.manage(SistemaJanela(sistema));
                 let w = WebviewWindowBuilder::new(app, JANELA, WebviewUrl::App("index.html".into()))
                     .title(APP_NAME)
                     .inner_size(1000.0, 720.0)

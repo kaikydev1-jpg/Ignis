@@ -25,3 +25,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 axum.workspace = true
 reqwest.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Lê o lado e o estilo dos botões da janela que o sistema usa (gtk-decoration-layout).
+gtk = "0.18"

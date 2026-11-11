@@ -30,21 +30,73 @@ document.addEventListener("dragstart", (e) => { if (!e.target.closest("input, te
 // A janela não usa a barra do sistema: o topo do próprio Ignis arrasta a
 // janela (duplo clique maximiza) e tem os botões minimizar, maximizar e fechar.
 document.documentElement.dataset.so = /windows/i.test(navigator.userAgent) ? "windows" : /mac os/i.test(navigator.userAgent) ? "mac" : "linux";
+// Desenhos dos botões em cada estilo (o do maximizar tem também o "restaurar").
+const ICONES_JANELA = {
+  windows: { caixa: 10,
+    minimize: '<path d="M0 5.5h10"/>',
+    maximize: '<rect x=".5" y=".5" width="9" height="9" rx="1"/>',
+    restaurar: '<path d="M2.5 2.5V1.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1"/><rect x=".5" y="2.5" width="7" height="7" rx="1"/>',
+    close: '<path d="M.5.5l9 9M9.5.5l-9 9"/>' },
+  gnome: { caixa: 16,
+    minimize: '<path d="M4.5 11.5h7"/>',
+    maximize: '<rect x="4" y="4" width="8" height="8" rx="1.5"/>',
+    restaurar: '<rect x="3.5" y="6" width="6.5" height="6.5" rx="1.2"/><path d="M6 4h5a1 1 0 0 1 1 1v5"/>',
+    close: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>' },
+  kde: { caixa: 16,
+    minimize: '<path d="M4 6.5l4 4 4-4"/>',
+    maximize: '<path d="M4 10l4-4 4 4"/>',
+    restaurar: '<path d="M8 3.5l4.5 4.5L8 12.5 3.5 8z"/>',
+    close: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>' },
+  mac: { caixa: 12,
+    minimize: '<path d="M3 6h6"/>',
+    maximize: '<path d="M6 3v6M3 6h6"/>',
+    restaurar: '<path d="M6 3v6M3 6h6"/>',
+    close: '<path d="M3.5 3.5l5 5M8.5 3.5l-5 5"/>' },
+};
+const NOMES_JANELA = { minimize: "Minimizar", maximize: "Maximizar", close: "Fechar (o Ignis continua perto do relógio)" };
+
 (function barraDeTitulo() {
   const w = window.__TAURI__ && window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow();
   if (!w) return; // fora do Tauri (navegador) não há janela para controlar
   const raiz = document.documentElement;
-  $("controles-janela").hidden = false;
-  $("jan-min").addEventListener("click", () => w.minimize());
-  $("jan-max").addEventListener("click", () => w.toggleMaximize());
-  $("jan-fechar").addEventListener("click", () => w.close());
+  const svg = (estilo, d) => { const c = ICONES_JANELA[estilo].caixa; return `<svg viewBox="0 0 ${c} ${c}" aria-hidden="true">${d}</svg>`; };
   const marcar = async () => {
     const max = await w.isMaximized().catch(() => false);
     raiz.toggleAttribute("data-maximizada", max);
-    const nome = max ? "Restaurar" : "Maximizar";
-    $("jan-max").title = nome;
-    $("jan-max").setAttribute("aria-label", nome);
+    for (const b of document.querySelectorAll('[data-janela="maximize"]')) {
+      const nome = max ? "Restaurar" : "Maximizar";
+      b.title = nome;
+      b.setAttribute("aria-label", nome);
+    }
   };
+  // Monta os botões no estilo, lado e ordem que o sistema usa (ou a escolha da pessoa).
+  window.montarBotoesJanela = async (preferido) => {
+    const b = await tauri.invoke("botoes_janela", { preferido: preferido || "auto" });
+    const ic = ICONES_JANELA[b.estilo] || ICONES_JANELA.windows;
+    raiz.dataset.botoes = b.estilo;
+    raiz.toggleAttribute("data-botoes-esquerda", b.esquerda.length > 0);
+    for (const [lado, lista] of [["esquerda", b.esquerda], ["direita", b.direita]]) {
+      const caixa = $("controles-" + lado);
+      caixa.innerHTML = lista.map((nome) => {
+        const desenho = nome === "maximize"
+          ? `<span class="i-max">${svg(b.estilo, ic.maximize)}</span><span class="i-rest">${svg(b.estilo, ic.restaurar)}</span>`
+          : svg(b.estilo, ic[nome]);
+        return `<button data-janela="${nome}" class="jan-${nome}" title="${NOMES_JANELA[nome]}" aria-label="${NOMES_JANELA[nome]}" tabindex="-1">${desenho}</button>`;
+      }).join("");
+      caixa.hidden = lista.length === 0;
+    }
+    marcar();
+  };
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-janela]");
+    if (!b) return;
+    if (b.dataset.janela === "minimize") w.minimize();
+    else if (b.dataset.janela === "maximize") w.toggleMaximize();
+    else if (b.dataset.janela === "close") w.close();
+  });
+  api("GET", "/motor/config")
+    .then((c) => montarBotoesJanela(c.botoes_janela))
+    .catch(() => montarBotoesJanela("auto"));
   marcar();
   w.onResized(marcar);
 
@@ -454,6 +506,7 @@ async function carregarConfig() {
   if (![...sel.options].some((o) => Number(o.value) === min)) sel.add(new Option(`Depois de ${min} min`, String(min)));
   sel.value = String(min);
   $("cfg-contexto").value = String(c.contexto_preferido);
+  $("cfg-botoes").value = c.botoes_janela || "auto";
   $("cfg-autostart").checked = c.abrir_com_computador;
   $("cfg-att-auto").checked = c.procurar_atualizacoes_sozinho;
   $("cfg-proprio").value = c.llama_server_proprio || "";
@@ -473,6 +526,10 @@ async function salvar(patch, texto) {
 $("cfg-autostart").addEventListener("change", (e) => acao(null, () => salvar({ abrir_com_computador: e.target.checked }, e.target.checked ? "O Ignis vai abrir com o computador." : "O Ignis não vai mais abrir com o computador.")));
 $("cfg-att-auto").addEventListener("change", (e) => acao(null, () => salvar({ procurar_atualizacoes_sozinho: e.target.checked })));
 $("cfg-descarregar").addEventListener("change", (e) => acao(null, () => salvar({ descarregar_apos_min: Number(e.target.value) })));
+$("cfg-botoes").addEventListener("change", (e) => acao(null, async () => {
+  await salvar({ botoes_janela: e.target.value }, "Botões da janela atualizados.");
+  if (window.montarBotoesJanela) await window.montarBotoesJanela(e.target.value);
+}));
 $("cfg-contexto").addEventListener("change", (e) => acao(null, () => salvar({ contexto_preferido: Number(e.target.value) }, "Vale a partir do próximo modelo carregado.")));
 $("cfg-porta").addEventListener("change", (e) => acao(null, async () => {
   const p = Number(e.target.value);

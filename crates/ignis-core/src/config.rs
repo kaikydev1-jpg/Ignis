@@ -27,6 +27,8 @@ pub struct Settings {
     pub modelo_padrao: Option<String>,
     /// Já passou pela primeira execução (liga o "abrir com o computador" uma vez).
     pub primeira_execucao_feita: bool,
+    /// Estilo dos botões da janela: "auto" (segue o sistema), "windows", "gnome", "kde" ou "mac".
+    pub botoes_janela: String,
 }
 
 impl Default for Settings {
@@ -41,6 +43,7 @@ impl Default for Settings {
             llama_server_proprio: None,
             modelo_padrao: None,
             primeira_execucao_feita: false,
+            botoes_janela: "auto".into(),
         }
     }
 }
@@ -52,6 +55,9 @@ impl Settings {
             self.porta = PORTA_PADRAO;
         }
         self.contexto_preferido = self.contexto_preferido.clamp(1024, 262_144);
+        if !crate::janela::ESTILOS.contains(&self.botoes_janela.as_str()) {
+            self.botoes_janela = "auto".into();
+        }
     }
 }
 
@@ -68,6 +74,7 @@ pub struct SettingsPatch {
     pub llama_server_proprio: Option<String>,
     /// String vazia remove.
     pub modelo_padrao: Option<String>,
+    pub botoes_janela: Option<String>,
 }
 
 impl SettingsPatch {
@@ -95,6 +102,9 @@ impl SettingsPatch {
         }
         if let Some(v) = self.modelo_padrao {
             s.modelo_padrao = if v.trim().is_empty() { None } else { Some(v.trim().to_string()) };
+        }
+        if let Some(v) = self.botoes_janela {
+            s.botoes_janela = v.trim().to_lowercase();
         }
         s.sanitize();
     }
@@ -128,5 +138,15 @@ mod tests {
         assert_eq!(s.porta, PORTA_PADRAO, "porta privilegiada volta ao padrão");
         assert_eq!(s.descarregar_apos_seg, 180);
         assert_eq!(s.llama_server_proprio, None);
+    }
+
+    #[test]
+    fn botoes_da_janela_aceitam_so_estilos_conhecidos() {
+        let mut s = Settings::default();
+        assert_eq!(s.botoes_janela, "auto");
+        SettingsPatch { botoes_janela: Some(" Mac ".into()), ..Default::default() }.apply(&mut s);
+        assert_eq!(s.botoes_janela, "mac");
+        SettingsPatch { botoes_janela: Some("amiga".into()), ..Default::default() }.apply(&mut s);
+        assert_eq!(s.botoes_janela, "auto", "estilo desconhecido volta ao automático");
     }
 }

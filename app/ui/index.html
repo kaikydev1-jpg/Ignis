@@ -9,6 +9,7 @@
 <body>
 <div class="app">
   <aside class="lateral" data-arrastar>
+    <div class="controles-janela esquerda" id="controles-esquerda" data-arrastar hidden></div>
     <div class="marca" data-arrastar="tudo">
       <img src="icone.png" alt="" width="28" height="28">
       <span>Ignis</span>
@@ -42,18 +43,7 @@
 
   <!-- Barra de título integrada: arrasta a janela, duplo clique maximiza -->
   <div class="barra-janela" data-arrastar>
-    <div class="controles-janela" id="controles-janela" hidden>
-      <button id="jan-min" title="Minimizar" aria-label="Minimizar" tabindex="-1">
-        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5.5h10"/></svg>
-      </button>
-      <button id="jan-max" title="Maximizar" aria-label="Maximizar" tabindex="-1">
-        <svg class="i-max" viewBox="0 0 10 10" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9" rx="1"/></svg>
-        <svg class="i-rest" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5V1.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1"/><rect x=".5" y="2.5" width="7" height="7" rx="1"/></svg>
-      </button>
-      <button id="jan-fechar" class="fechar-janela" title="Fechar (o Ignis continua perto do relógio)" aria-label="Fechar" tabindex="-1">
-        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M.5.5l9 9M9.5.5l-9 9"/></svg>
-      </button>
-    </div>
+    <div class="controles-janela direita" id="controles-direita" hidden></div>
   </div>
 
   <main id="principal">
@@ -187,6 +177,16 @@
               <option value="15">Depois de 15 min</option>
               <option value="30">Depois de 30 min</option>
               <option value="60">Depois de 1 hora</option>
+            </select>
+          </label>
+          <label class="ajuste">
+            <div><strong>Botões da janela</strong><small>Minimizar, maximizar e fechar no jeito do seu sistema.</small></div>
+            <select id="cfg-botoes">
+              <option value="auto">Automático (segue o sistema)</option>
+              <option value="windows">Windows</option>
+              <option value="gnome">GNOME</option>
+              <option value="kde">KDE</option>
+              <option value="mac">Mac (bolinhas coloridas)</option>
             </select>
           </label>
           <label class="ajuste">
