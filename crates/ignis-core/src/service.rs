@@ -407,18 +407,19 @@ impl Motor {
         if self.background.swap(true, Ordering::SeqCst) {
             return;
         }
-        // primeira execução: liga "abrir com o computador"
+        // "abrir com o computador": ligado por padrão; a cada início regrava a
+        // entrada com o caminho atual (o AppImage pode ter mudado de lugar).
         {
             let mut s = self.settings.write().unwrap();
-            if !s.primeira_execucao_feita {
-                s.primeira_execucao_feita = true;
-                if s.abrir_com_computador {
-                    if let Some(l) = &self.launcher {
-                        if let Err(e) = autostart::set(true, Some(l)) {
-                            tracing::warn!("autostart: {e}");
-                        }
+            if s.abrir_com_computador {
+                if let Some(l) = &self.launcher {
+                    if let Err(e) = autostart::set(true, Some(l)) {
+                        tracing::warn!("autostart: {e}");
                     }
                 }
+            }
+            if !s.primeira_execucao_feita {
+                s.primeira_execucao_feita = true;
                 let _ = crate::paths::write_json(&self.paths.config_file(), &*s);
             }
         }
@@ -1249,7 +1250,11 @@ impl Motor {
         match ordem.first().and_then(|v| resultados.iter().find(|r| &r.variante == v)) {
             Some(best) => self.aviso(
                 "info",
-                format!("Teste concluído: o motor {} foi o mais rápido ({} tokens/s escrevendo).", best.nome, best.geracao_tps.unwrap_or(0.0)),
+                format!(
+                    "Teste concluído: o motor {} foi o mais rápido ({} tokens/s escrevendo).",
+                    best.nome,
+                    format!("{:.1}", best.geracao_tps.unwrap_or(0.0)).replace('.', ",")
+                ),
             ),
             None => self.aviso("erro", "Nenhum motor funcionou no teste. Veja os detalhes na seção Placa."),
         }

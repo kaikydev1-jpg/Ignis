@@ -374,7 +374,9 @@ async fn modelos(State(m): M) -> Response {
                 o.insert("encaixe".into(), json!(plano.encaixe));
                 o.insert("rotulo".into(), json!(plano.encaixe.rotulo()));
                 o.insert("aviso".into(), json!(plano.aviso));
-                o.insert("recomendado".into(), json!(plano.encaixe == budget::Encaixe::Placa));
+                let recomendado = plano.encaixe == budget::Encaixe::Placa
+                    || (!rec.usa_placa && plano.encaixe == budget::Encaixe::Processador && c.parametros_bilhoes <= 4.0);
+                o.insert("recomendado".into(), json!(recomendado));
                 o.insert("parcial".into(), json!(parcial));
                 o.insert("tarefa".into(), json!(tarefa));
             }

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ignis",
+  "mainBinaryName": "ignis",
+  "version": "0.1.0",
+  "identifier": "io.github.kaikydev1jpg.Ignis",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "deb", "rpm", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Utility",
+    "publisher": "Ignis",
+    "copyright": "Licença MIT",
+    "shortDescription": "Motor de IA local",
+    "longDescription": "Roda modelos de IA no próprio computador com a melhor aceleração da sua placa (AMD, NVIDIA, Intel ou processador) e serve outros programas por uma porta local compatível com a API da OpenAI.",
+    "licenseFile": "../../LICENSE",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["PortugueseBR"],
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libayatana-appindicator3-1"]
+      },
+      "rpm": {
+        "depends": ["webkit2gtk4.1", "libayatana-appindicator-gtk3"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}

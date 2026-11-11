@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ignis</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topo">
+    <div class="marca"><img src="icone.png" alt="" width="22" height="22"> Ignis</div>
+    <div id="situacao" class="pilula">…</div>
+  </header>
+
+  <div id="aviso" class="aviso escondido" role="status">
+    <span id="aviso-texto"></span>
+    <button class="link" id="aviso-fechar" title="Fechar aviso">×</button>
+  </div>
+
+  <div class="corpo">
+    <nav class="menu" aria-label="Seções">
+      <button data-secao="placa" class="ativo">Placa</button>
+      <button data-secao="modelos">Modelos</button>
+      <button data-secao="motor">Motor</button>
+      <button data-secao="status">Status</button>
+    </nav>
+
+    <main>
+      <section id="preparar" class="cartao destaque escondido">
+        <h2>Preparar o Ignis para a sua placa</h2>
+        <p id="preparar-texto"></p>
+        <ul id="preparar-lista" class="lista-simples"></ul>
+        <div class="acoes">
+          <button id="btn-preparar" class="primario">Preparar agora</button>
+        </div>
+      </section>
+
+      <!-- PLACA -->
+      <section id="sec-placa" class="secao">
+        <div class="cartao">
+          <h2>Sua placa de vídeo</h2>
+          <dl id="placa-dados" class="dados"></dl>
+          <div class="acoes">
+            <button id="btn-detectar">Detectar de novo</button>
+            <button id="btn-relatorio">Copiar relatório</button>
+          </div>
+        </div>
+        <div class="cartao">
+          <h2>Teste de velocidade</h2>
+          <p id="teste-situacao" class="nota"></p>
+          <table class="tabela">
+            <thead><tr><th>Motor</th><th>Leitura</th><th>Escrita</th><th>Resultado</th></tr></thead>
+            <tbody id="teste-tabela"></tbody>
+          </table>
+          <p class="nota">Velocidade em tokens por segundo (um token é mais ou menos ¾ de uma palavra). O Ignis usa o motor mais rápido que funcionou.</p>
+          <div class="acoes"><button id="btn-testar">Testar de novo</button></div>
+        </div>
+        <div class="cartao">
+          <h2>Motores para esta máquina</h2>
+          <ul id="candidatos" class="lista-motores"></ul>
+        </div>
+      </section>
+
+      <!-- MODELOS -->
+      <section id="sec-modelos" class="secao escondido">
+        <div class="cartao">
+          <h2>Instalados</h2>
+          <table class="tabela">
+            <thead><tr><th>Modelo</th><th>Tamanho</th><th>De onde veio</th><th>Na sua placa</th><th></th></tr></thead>
+            <tbody id="instalados"></tbody>
+          </table>
+          <p id="instalados-vazio" class="nota escondido">Nenhum modelo ainda. Escolha um nos recomendados abaixo.</p>
+        </div>
+        <div class="cartao" id="cartao-tarefas">
+          <h2>Downloads e cópias</h2>
+          <ul id="tarefas" class="lista-tarefas"></ul>
+        </div>
+        <div class="cartao">
+          <div class="titulo-linha">
+            <h2 id="titulo-recomendados">Recomendados para a sua placa</h2>
+            <label class="caixa"><input type="checkbox" id="mostrar-todos"> Mostrar todos</label>
+          </div>
+          <div id="catalogo" class="grade"></div>
+        </div>
+        <div class="cartao">
+          <h2>Trazer modelos do Ollama</h2>
+          <p class="nota">O Ignis lê a pasta do Ollama e oferece cada modelo. "Usar daqui" lê o arquivo no lugar (sem ocupar mais espaço); "Copiar" faz uma cópia. O Ignis nunca apaga nada do Ollama.</p>
+          <div class="acoes"><button id="btn-ollama">Procurar modelos do Ollama</button></div>
+          <table class="tabela escondido" id="ollama-tabela">
+            <thead><tr><th>Modelo</th><th>Tamanho</th><th></th></tr></thead>
+            <tbody id="ollama-lista"></tbody>
+          </table>
+          <p id="ollama-nota" class="nota"></p>
+        </div>
+        <div class="cartao">
+          <h2>Usar um arquivo GGUF que você já tem</h2>
+          <div class="linha-form">
+            <input type="text" id="arquivo-gguf" placeholder="Caminho do arquivo .gguf">
+            <button id="btn-arquivo">Adicionar</button>
+          </div>
+          <div class="acoes"><button class="link" id="btn-pasta-modelos">Abrir a pasta de modelos</button></div>
+        </div>
+      </section>
+
+      <!-- MOTOR -->
+      <section id="sec-motor" class="secao escondido">
+        <div class="cartao">
+          <h2>Escolha do motor</h2>
+          <p class="nota">No automático, o Ignis usa o mais rápido do teste e, se ele falhar, passa para o próximo sozinho.</p>
+          <div id="escolha-motor" class="opcoes"></div>
+        </div>
+        <div class="cartao">
+          <h2>Versões</h2>
+          <dl id="versoes" class="dados"></dl>
+        </div>
+        <div class="cartao">
+          <h2>Atualizações</h2>
+          <p class="nota">O aplicativo, os motores e o catálogo de modelos atualizam cada um no seu ritmo. Nada é atualizado sem você aceitar, e nunca no meio de uma conversa.</p>
+          <div id="atualizacao-info"></div>
+          <div class="acoes"><button id="btn-procurar-att">Procurar atualizações</button></div>
+          <label class="caixa"><input type="checkbox" id="cfg-att-auto"> Procurar atualizações sozinho uma vez por semana</label>
+        </div>
+        <div class="cartao">
+          <h2>Configurações</h2>
+          <div class="form">
+            <label>Porta da API (só neste computador)
+              <input type="number" id="cfg-porta" min="1024" max="65535">
+            </label>
+            <label>Descarregar o modelo depois de quantos minutos parado (0 = nunca)
+              <input type="number" id="cfg-descarregar" min="0" max="1440">
+            </label>
+            <label>Tamanho do contexto desejado
+              <select id="cfg-contexto">
+                <option value="2048">2.048 tokens</option>
+                <option value="4096">4.096 tokens</option>
+                <option value="8192">8.192 tokens</option>
+                <option value="16384">16.384 tokens</option>
+                <option value="32768">32.768 tokens</option>
+              </select>
+            </label>
+            <label class="caixa"><input type="checkbox" id="cfg-autostart"> Abrir o Ignis junto com o computador</label>
+            <label>llama-server próprio (opcional)
+              <input type="text" id="cfg-proprio" placeholder="Deixe vazio para usar só os motores oficiais">
+            </label>
+          </div>
+          <div class="acoes"><button id="btn-salvar-cfg" class="primario">Salvar</button></div>
+          <p id="dica-gnome" class="nota escondido">No GNOME puro (Fedora Workstation/Silverblue), o ícone perto do relógio só aparece com a extensão
+            <button class="link" data-link="https://extensions.gnome.org/extension/615/appindicator-support/">AppIndicator</button>.</p>
+        </div>
+      </section>
+
+      <!-- STATUS -->
+      <section id="sec-status" class="secao escondido">
+        <div class="cartao">
+          <h2 id="status-titulo">…</h2>
+          <p id="status-texto" class="nota"></p>
+          <dl id="status-dados" class="dados"></dl>
+          <div class="acoes">
+            <button id="btn-pausar">Pausar</button>
+            <button id="btn-descarregar">Descarregar modelo</button>
+            <button id="btn-parar">Parar conversas</button>
+          </div>
+        </div>
+        <div class="cartao">
+          <h2>Endereço para outros programas</h2>
+          <div class="linha-form">
+            <input type="text" id="endereco" readonly>
+            <button id="btn-copiar-endereco">Copiar</button>
+          </div>
+          <p class="nota">Compatível com a API da OpenAI. Use este endereço no Valkode ou em qualquer programa que aceite "OpenAI compatível".</p>
+        </div>
+        <div class="cartao">
+          <h2>Avisos recentes</h2>
+          <ul id="avisos" class="lista-avisos"></ul>
+        </div>
+        <div class="cartao">
+          <details id="registro-det">
+            <summary>Registro do motor</summary>
+            <pre id="registro"></pre>
+          </details>
+          <div class="acoes"><button class="link" id="btn-pasta-registros">Abrir a pasta de registros</button></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

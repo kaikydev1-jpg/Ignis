@@ -2,9 +2,9 @@
 resolver = "2"
 members = [
     "crates/ignis-core",
-    # "crates/ignis-cli",
+    "crates/ignis-cli",
     "crates/fake-llama-server",
-    # "app/src-tauri",
+    "app/src-tauri",
 ]
 
 [workspace.package]

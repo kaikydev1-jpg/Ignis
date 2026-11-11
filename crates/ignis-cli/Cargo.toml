@@ -1,0 +1,16 @@
+[package]
+name = "ignis-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Linha de comando do Ignis (diagnóstico e modo sem janela)"
+
+[[bin]]
+name = "ignis-cli"
+path = "src/main.rs"
+
+[dependencies]
+ignis-core = { path = "../ignis-core" }
+tokio.workspace = true
+serde_json.workspace = true
+tracing-subscriber.workspace = true
