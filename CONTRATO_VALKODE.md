@@ -14,7 +14,9 @@
 - Navegadores: só origens locais (`http://localhost:*`, `http://127.0.0.1:*`)
   ou do Tauri são aceitas; sites da internet recebem 403. Programas de desktop
   (Node, Rust, Python, Electron no processo principal) não mandam `Origin` e
-  funcionam normalmente.
+  funcionam normalmente. Origem `null`/`file://` é recusada: no Electron, chame
+  pelo processo principal. Para origens aceitas, o preflight aceita os
+  cabeçalhos que o cliente pedir (ex.: `x-stainless-*` do cliente da OpenAI).
 
 ## 1. Saber se o motor serve: `GET /motor/versao`
 ```json
@@ -59,6 +61,17 @@ Corpo igual ao da OpenAI (`messages`, `max_tokens`, `temperature`, `stream`,
 - Streaming: `text/event-stream` com `data: {...}` e `data: [DONE]` no fim.
 - A resposta traz o cabeçalho **`X-Ignis-Requisicao`** (número do pedido).
 - O llama-server inclui `timings` (tokens/s) no fim; o Ignis mostra isso na janela.
+- Campos extras do llama-server passam direto (o corpo é repassado como veio).
+- Pedidos de até **256 MB** (fotos e áudio em base64).
+
+### Modelos que "pensam" (Qwen3 e outros)
+O raciocínio vem separado: `message.reasoning_content` (streaming:
+`delta.reasoning_content`) e a resposta em `content`. Para desligar o
+pensamento (respostas rápidas, voz): `"chat_template_kwargs": {"enable_thinking": false}`.
+
+### Ferramentas
+`tools` no formato da OpenAI; a resposta traz `tool_calls` e
+`finish_reason: "tool_calls"` (depende do modelo saber usar).
 
 ### Parar uma resposta
 Duas formas (use a que for mais fácil):
@@ -73,8 +86,9 @@ Repasse direto (útil para completar código com FIM, ex.: modelo
 
 ### Imagens e áudio
 Modelos instalados com o arquivo de visão/áudio (`ignis.visao` em `/motor/modelos`)
-aceitam mensagens no formato da OpenAI com `image_url` (e áudio, quando o modelo
-suporta), repassadas ao llama-server com `--mmproj`.
+aceitam mensagens no formato da OpenAI, repassadas ao llama-server com `--mmproj`:
+- imagem: `{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}`;
+- áudio (só modelos que entendem áudio): `{"type":"input_audio","input_audio":{"data":"<base64>","format":"wav"}}` (`wav` ou `mp3`).
 
 ### `POST /v1/embeddings`
 Só com modelo de embeddings (ex.: `qwen3-embedding-0.6b`). Sem `model` → usa o

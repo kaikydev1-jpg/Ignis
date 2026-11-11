@@ -98,7 +98,8 @@ IGNIS_TEST_ENGINE_ARCHIVE=llama-b12271-bin-ubuntu-x64.tar.gz IGNIS_TEST_MODEL=qw
 | `packaging/flatpak` | Manifesto do Flatpak |
 | `.github/workflows` | CI (testes) e instaladores |
 
-Documentos: [ESTADO.md](ESTADO.md) (situação e decisões),
+Documentos: [BRIEFING.md](BRIEFING.md) (o que é, instalar, usar e ligar um app),
+[ESTADO.md](ESTADO.md) (situação e decisões),
 [TESTE_DO_CRIADOR.md](TESTE_DO_CRIADOR.md) (testes na placa real),
 [CONTRATO_VALKODE.md](CONTRATO_VALKODE.md) (API), [AVISOS.md](AVISOS.md) (licenças).
 

@@ -54,7 +54,7 @@ Instaladores: GitHub → Actions → workflow **Instaladores** (último commit) 
 ## Provas feitas (sem placa de vídeo)
 | O quê | Resultado |
 |---|---|
-| Testes automáticos | 105 passando (unidades, candidatos, detecção com fixtures, placa simulada, downloads/Ollama, Hugging Face com servidor imitando o site, llama-server oficial) |
+| Testes automáticos | 106 passando (unidades, candidatos, detecção com fixtures, placa simulada, downloads/Ollama, Hugging Face com servidor imitando o site, llama-server oficial) |
 | CI GitHub Linux **e Windows** | fmt, clippy e todos os testes passaram nos dois, inclusive o llama-server oficial rodando no Windows (resposta "Olá!", 44,8 tokens/s) |
 | Instaladores no CI | NSIS (Windows, com as DLLs do Visual C++), RPM (Fedora 44), .deb, AppImage e Flatpak gerados |
 | Hugging Face de verdade | busca, lista de versões e "ver se cabe" (lendo o cabeçalho real por Range) funcionaram pela janela |
@@ -67,6 +67,7 @@ Instaladores: GitHub → Actions → workflow **Instaladores** (último commit) 
 | Instância única | abrir de novo traz a janela; não duplica |
 | Abrir com o computador | `.desktop` criado (binário, AppImage e Flatpak) |
 | Pacotes locais | .deb, .rpm, AppImage (runtime estático: dispensa libfuse2) e Flatpak (GNOME 51) gerados |
+| Recursos para apps (llama-server oficial + Qwen3 0.6B) | raciocínio separado em `reasoning_content`; `chat_template_kwargs.enable_thinking=false` desliga o pensamento; `tools` devolve `tool_calls`; pedido de 30 MB aceito (o Ignis agora aceita até 256 MB: fotos/áudio em base64) |
 | Flatpak de verdade | instalou, rodou, leu a distro real do sistema (`/run/host`), gravou o autostart com `flatpak run` e rodou o llama-server oficial dentro do sandbox (41 tokens/s) |
 
 ## O que só a placa real prova
@@ -85,7 +86,7 @@ Está em **TESTE_DO_CRIADOR.md**:
 4. Publicar: rodar o workflow **Instaladores** à mão com "publicar = sim" (cria um rascunho de release para revisar).
 
 ## Pendente com o criador
-- **Azura Voice** (app do criador): vai se conectar ao Ignis pela API (CONTRATO_VALKODE.md serve para qualquer app). Aguardando a lista do que falta no motor, vinda do chat que criou o Azura Voice, para atualizar o Ignis.
+- **Azura Voice** e **Valkode** (apps do criador): vão se conectar ao Ignis pela API. O **BRIEFING.md** explica tudo para eles (instalar, usar, ligar) e pede de volta, num formato fixo, a lista do que falta no motor. Aguardando essa lista para atualizar o Ignis.
 - Modelos de gerar voz/música (TTS etc.) não rodam no llama.cpp; se o Azura Voice precisar, vira uma opção futura de "motor de áudio".
 
 ## Decisões tomadas
