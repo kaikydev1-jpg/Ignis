@@ -203,6 +203,29 @@ async fn api_openai_com_streaming() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn pedido_grande_com_imagem_ou_audio_passa() {
+    // Foto ou áudio em base64 passam fácil de 2 MB (o limite padrão do axum).
+    let amb = ambiente(Opcoes::default());
+    let m = &amb.motor;
+    m.start_background();
+    let a = modelo_gguf(amb.dir.path(), "conversa", false);
+    let id = m.import_file(&a).unwrap();
+    let base = subir_api(m).await;
+    let foto = format!("data:image/jpeg;base64,{}", "A".repeat(12 * 1024 * 1024));
+    let r = cliente()
+        .post(format!("{base}/v1/chat/completions"))
+        .json(&json!({"model": id, "max_tokens": 3, "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "O que tem na foto?"},
+            {"type": "image_url", "image_url": {"url": foto}}
+        ]}]}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 200, "pedido de 12 MB deve passar");
+    m.shutdown_all().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn parar_interrompe_a_resposta() {
     let amb = ambiente(Opcoes { motores: vec![("sim-vulkan", cfg(25.0)), ("sim-cpu", cfg(10.0))], ..Default::default() });
     let m = &amb.motor;
@@ -359,6 +382,21 @@ async fn api_recusa_sites_e_outros_hosts() {
     let r = c.get(format!("{base}/motor/estado")).header("Origin", "http://localhost:5173").send().await.unwrap();
     assert_eq!(r.status().as_u16(), 200);
     assert_eq!(r.headers()["access-control-allow-origin"], "http://localhost:5173");
+    // App local com o cliente oficial da OpenAI (manda cabeçalhos x-stainless-*)
+    let r = c
+        .request(reqwest::Method::OPTIONS, format!("{base}/v1/chat/completions"))
+        .header("Origin", "http://localhost:5173")
+        .header("Access-Control-Request-Method", "POST")
+        .header("Access-Control-Request-Headers", "content-type, authorization, x-stainless-os, x-stainless-lang")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 204);
+    let permitidos = r.headers()["access-control-allow-headers"].to_str().unwrap().to_lowercase();
+    assert!(permitidos.contains("x-stainless-os") && permitidos.contains("content-type"), "{permitidos}");
+    // Origem "null" (iframe isolado de um site) continua recusada
+    let r = c.get(format!("{base}/motor/estado")).header("Origin", "null").send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 403);
     m.shutdown_all().await;
 }
 

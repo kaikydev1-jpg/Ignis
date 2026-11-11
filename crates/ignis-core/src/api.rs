@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Request, State};
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -82,6 +82,13 @@ async fn guard(req: Request, next: Next) -> Response {
     if req.method() == Method::OPTIONS {
         let mut r = StatusCode::NO_CONTENT.into_response();
         add_cors(&mut r, origin.as_deref());
+        // A origem já foi conferida: aceita os cabeçalhos que o cliente pedir
+        // (o cliente oficial da OpenAI manda x-stainless-* e outros).
+        if origin.is_some() {
+            if let Some(v) = req.headers().get(header::ACCESS_CONTROL_REQUEST_HEADERS) {
+                r.headers_mut().insert(header::ACCESS_CONTROL_ALLOW_HEADERS, v.clone());
+            }
+        }
         return r;
     }
     let mut r = next.run(req).await;
@@ -103,6 +110,10 @@ fn add_cors(r: &mut Response, origin: Option<&str>) {
 }
 
 // ---------- rotas ----------
+
+/// Tamanho máximo de um pedido. Fotos e áudio vão em base64 dentro do JSON e
+/// passam fácil do limite padrão do axum (2 MB). A porta é só local.
+pub const LIMITE_PEDIDO: usize = 256 * 1024 * 1024;
 
 pub fn router(motor: Arc<Motor>) -> Router {
     Router::new()
@@ -142,6 +153,7 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/motor/hf/info", post(hf_info))
         .route("/motor/hf/baixar", post(hf_baixar))
         .route("/motor/hf/conta", get(hf_conta).post(hf_conta_salvar))
+        .layer(DefaultBodyLimit::max(LIMITE_PEDIDO))
         .layer(middleware::from_fn(guard))
         .with_state(motor)
 }

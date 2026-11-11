@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -129,6 +129,8 @@ async fn main() {
         .route("/v1/chat/completions", post(chat))
         .route("/v1/completions", post(chat))
         .route("/v1/embeddings", post(embeddings_route))
+        // O llama-server oficial aceita pedidos grandes (fotos/áudio em base64).
+        .layer(DefaultBodyLimit::disable())
         .with_state(app);
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.expect("bind");
     axum::serve(listener, router).await.unwrap();
