@@ -160,7 +160,8 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
     // Parar no meio de uma resposta longa
     let resp = c
         .post(format!("{base}/v1/chat/completions"))
-        .json(&json!({"model": id, "stream": true, "max_tokens": 2000, "messages": [{"role": "user", "content": "Escreva uma história bem longa sobre um dragão."}]}))
+        // ignore_eos: a resposta não pode acabar sozinha antes do Parar
+        .json(&json!({"model": id, "stream": true, "max_tokens": 2000, "ignore_eos": true, "messages": [{"role": "user", "content": "Escreva uma história bem longa sobre um dragão."}]}))
         .send()
         .await
         .unwrap();
@@ -179,9 +180,10 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
         (n, done)
     });
     tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert!(!leitura.is_finished(), "a resposta terminou antes do Parar (o modelo parou sozinho?)");
     let t_parar = Instant::now();
     let r: Value = c.post(format!("{base}/motor/parar")).json(&json!({"id": req_id})).send().await.unwrap().json().await.unwrap();
-    assert_eq!(r["paradas"], 1);
+    assert_eq!(r["paradas"], 1, "conversas ativas: {}", motor.ativos());
     let (n, done) = tokio::time::timeout(Duration::from_secs(5), leitura).await.unwrap().unwrap();
     eprintln!("parou depois de {n} pedaços em {:?}", t_parar.elapsed());
     assert!(done && n < 2000);

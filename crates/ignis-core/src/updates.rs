@@ -89,6 +89,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn le_o_formato_gerado_pelo_script_do_ci() {
+        // mesmo formato de scripts/gerar_atualizacoes.py
+        let motores: serde_json::Value = serde_json::from_str(include_str!("../../../manifest/motores.json")).unwrap();
+        let catalogo: serde_json::Value = serde_json::from_str(include_str!("../../../manifest/catalogo.json")).unwrap();
+        let v = serde_json::json!({
+            "versao_manifesto": 1,
+            "app": {"versao": "0.2.0", "pagina": "https://github.com/kaikydev1-jpg/Ignis/releases/tag/v0.2.0", "notas": ""},
+            "motores": motores,
+            "catalogo": catalogo,
+        });
+        let r: RemoteManifest = serde_json::from_value(v).unwrap();
+        let c = compare(r, "0.1.0", &EngineManifest::embedded(), &Catalog::embedded()).unwrap();
+        assert_eq!(c.app.unwrap().versao, "0.2.0");
+        assert!(c.motor.is_none() && c.catalogo.is_none());
+    }
+
+    #[test]
     fn versoes() {
         assert!(semver_gt("0.10.0", "0.9.9"));
         assert!(semver_gt("v1.0.0", "0.99.0"));

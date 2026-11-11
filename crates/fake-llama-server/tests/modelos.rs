@@ -220,3 +220,37 @@ async fn importar_do_ollama_sem_mexer_nele() {
     assert!(m.import_ollama("nao:existe", "usar", &[ollama_dir]).is_err());
     let _ = json!({});
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn procurar_e_aplicar_atualizacao_do_catalogo() {
+    // servidor local no papel do GitHub Releases
+    let mut catalogo: serde_json::Value = serde_json::to_value(ignis_core::catalog::Catalog::embedded()).unwrap();
+    catalogo["versao"] = json!(99);
+    let manifesto = json!({
+        "versao_manifesto": 1,
+        "app": {"versao": "9.9.9", "pagina": "https://github.com/kaikydev1-jpg/Ignis/releases/tag/v9.9.9", "notas": ""},
+        "motores": manifesto_simulado(),
+        "catalogo": catalogo,
+    });
+    let corpo = serde_json::to_vec(&manifesto).unwrap();
+    let app = axum::Router::new().route("/atualizacoes.json", get(move || async move { corpo.clone() }));
+    let l = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let addr = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    // só este teste usa a variável
+    std::env::set_var("IGNIS_URL_ATUALIZACOES", format!("http://{addr}/atualizacoes.json"));
+
+    let amb = ambiente(Opcoes { catalog: Some(ignis_core::catalog::Catalog::embedded()), ..Default::default() });
+    let m = &amb.motor;
+    let r = m.check_updates().await.unwrap();
+    assert_eq!(r.app.as_ref().unwrap().versao, "9.9.9", "avisa da versão nova do aplicativo");
+    assert_eq!(r.catalogo, Some(99));
+    assert!(r.motor.is_none(), "motor simulado (b1) não é mais novo");
+    assert!(avisos_texto(m).contains("Atualização disponível"));
+    // nada muda sem aceitar
+    assert_eq!(m.catalog().versao, 1);
+    m.apply_update("catalogo").unwrap();
+    assert_eq!(m.catalog().versao, 99);
+    assert!(amb.paths.catalog_override().exists(), "catálogo novo guardado para os próximos inícios");
+    assert!(m.apply_update("nada").is_err());
+}
