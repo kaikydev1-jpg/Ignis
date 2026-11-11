@@ -42,9 +42,7 @@ pub struct CatalogModel {
 
 impl CatalogModel {
     pub fn download_url(&self) -> String {
-        self.url
-            .clone()
-            .unwrap_or_else(|| format!("https://huggingface.co/{}/resolve/{}/{}", self.repo, self.revisao, self.arquivo))
+        self.url.clone().unwrap_or_else(|| format!("https://huggingface.co/{}/resolve/{}/{}", self.repo, self.revisao, self.arquivo))
     }
     pub fn embeddings(&self) -> bool {
         self.tipo == "embeddings"

@@ -86,7 +86,10 @@ async fn falha_ao_subir_passa_para_o_proximo_e_avisa() {
 async fn motor_que_cai_depois_de_carregar_e_trocado_sozinho() {
     let amb = ambiente(Opcoes {
         motores: vec![
-            ("sim-rocm", json!({"modo": "cai_depois", "cai_depois_ms": 800, "log_erro": "HIP error: an illegal memory access was encountered", "tps_geracao": 80.0})),
+            (
+                "sim-rocm",
+                json!({"modo": "cai_depois", "cai_depois_ms": 800, "log_erro": "HIP error: an illegal memory access was encountered", "tps_geracao": 80.0}),
+            ),
             ("sim-vulkan", cfg(60.0)),
             ("sim-cpu", cfg(10.0)),
         ],
@@ -289,7 +292,8 @@ async fn pausar_e_retomar() {
     let st: Value = c.get(format!("{base}/motor/estado")).send().await.unwrap().json().await.unwrap();
     assert_eq!(st["fase"], "pausado");
     c.post(format!("{base}/motor/retomar")).send().await.unwrap();
-    let r = c.post(format!("{base}/v1/chat/completions")).json(&json!({"model": id, "messages": [], "max_tokens": 2})).send().await.unwrap();
+    let r =
+        c.post(format!("{base}/v1/chat/completions")).json(&json!({"model": id, "messages": [], "max_tokens": 2})).send().await.unwrap();
     assert_eq!(r.status().as_u16(), 200);
     m.shutdown_all().await;
 }
@@ -304,7 +308,12 @@ async fn um_modelo_por_vez_e_embeddings() {
     let base = subir_api(m).await;
     let c = cliente();
     for id in [&a, &b] {
-        let r = c.post(format!("{base}/v1/chat/completions")).json(&json!({"model": id, "messages": [], "max_tokens": 1})).send().await.unwrap();
+        let r = c
+            .post(format!("{base}/v1/chat/completions"))
+            .json(&json!({"model": id, "messages": [], "max_tokens": 1}))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(r.status().as_u16(), 200);
         assert_eq!(m.loaded_info().unwrap().modelo_id, *id, "troca para o modelo pedido");
     }
@@ -312,7 +321,15 @@ async fn um_modelo_por_vez_e_embeddings() {
     let carregados: Vec<&Value> = models["data"].as_array().unwrap().iter().filter(|x| x["ignis"]["carregado"] == json!(true)).collect();
     assert_eq!(carregados.len(), 1);
     // embeddings
-    let r: Value = c.post(format!("{base}/v1/embeddings")).json(&json!({"model": e, "input": ["olá", "mundo"]})).send().await.unwrap().json().await.unwrap();
+    let r: Value = c
+        .post(format!("{base}/v1/embeddings"))
+        .json(&json!({"model": e, "input": ["olá", "mundo"]}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
     assert_eq!(r["data"].as_array().unwrap().len(), 2);
     // embeddings sem dizer o modelo usa o de embeddings
     let r = c.post(format!("{base}/v1/embeddings")).json(&json!({"input": "olá"})).send().await.unwrap();

@@ -132,7 +132,9 @@ pub fn plan(shape: &ModelShape, rec: &Recursos, contexto_preferido: u32) -> Plan
 
     let vram = match (rec.usa_placa, rec.vram_livre_mb) {
         (true, Some(v)) if v > FOLGA_VRAM_MB => v - FOLGA_VRAM_MB,
-        (true, _) => return so_processador(cap.min(CONTEXTO_DIVIDIDO.max(CONTEXTO_MINIMO)), Some("Não consegui medir a memória livre da placa.")),
+        (true, _) => {
+            return so_processador(cap.min(CONTEXTO_DIVIDIDO.max(CONTEXTO_MINIMO)), Some("Não consegui medir a memória livre da placa."))
+        }
         (false, _) => return so_processador(cap, None),
     };
 

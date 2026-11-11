@@ -389,7 +389,12 @@ mod janela {
                 tauri::async_runtime::spawn(async move {
                     let mut falhas = 0;
                     loop {
-                        let r = http.get(format!("{base}/janela/esperar-foco")).header(HEADER_SENHA, &senha).timeout(Duration::from_secs(30)).send().await;
+                        let r = http
+                            .get(format!("{base}/janela/esperar-foco"))
+                            .header(HEADER_SENHA, &senha)
+                            .timeout(Duration::from_secs(30))
+                            .send()
+                            .await;
                         match r {
                             Ok(resp) if resp.status().is_success() => {
                                 falhas = 0;

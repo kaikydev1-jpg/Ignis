@@ -93,10 +93,7 @@ impl Sistema {
         }
         // Dentro do Flatpak o /etc/os-release é do runtime; o do sistema fica em /run/host.
         let candidates = ["/run/host/os-release", "/run/host/etc/os-release", "/etc/os-release", "/usr/lib/os-release"];
-        let text = candidates
-            .iter()
-            .find_map(|p| std::fs::read_to_string(p).ok())
-            .unwrap_or_default();
+        let text = candidates.iter().find_map(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
         let os = parse_os_release(&text);
         let ostree = std::path::Path::new("/run/ostree-booted").exists();
         Self {
@@ -144,12 +141,8 @@ pub const PACOTES_VULKAN: Pacotes = Pacotes {
     suse: &["libvulkan1", "libvulkan_radeon"],
 };
 
-pub const PACOTES_ROCM: Pacotes = Pacotes {
-    fedora: &["rocm-hip", "hipblas", "rocblas"],
-    debian: &[],
-    arch: &["rocm-hip-runtime", "hipblas", "rocblas"],
-    suse: &[],
-};
+pub const PACOTES_ROCM: Pacotes =
+    Pacotes { fedora: &["rocm-hip", "hipblas", "rocblas"], debian: &[], arch: &["rocm-hip-runtime", "hipblas", "rocblas"], suse: &[] };
 
 #[cfg(test)]
 mod tests {
@@ -192,10 +185,7 @@ VARIANT_ID=silverblue
     #[test]
     fn comando_certo_por_familia() {
         let mk = |f| Sistema { familia: f, nome: String::new(), versao: None, flatpak: false, appimage: false };
-        assert_eq!(
-            mk(Familia::Fedora).comando_instalar(&PACOTES_ROCM).unwrap(),
-            "sudo dnf install rocm-hip hipblas rocblas"
-        );
+        assert_eq!(mk(Familia::Fedora).comando_instalar(&PACOTES_ROCM).unwrap(), "sudo dnf install rocm-hip hipblas rocblas");
         let atomic = mk(Familia::FedoraAtomic).comando_instalar(&PACOTES_ROCM).unwrap();
         assert!(atomic.starts_with("sudo rpm-ostree install rocm-hip"));
         assert!(atomic.contains("reinicie"));

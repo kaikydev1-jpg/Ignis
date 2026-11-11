@@ -91,18 +91,10 @@ impl SettingsPatch {
             s.procurar_atualizacoes_sozinho = v;
         }
         if let Some(v) = self.llama_server_proprio {
-            s.llama_server_proprio = if v.trim().is_empty() {
-                None
-            } else {
-                Some(PathBuf::from(v.trim()))
-            };
+            s.llama_server_proprio = if v.trim().is_empty() { None } else { Some(PathBuf::from(v.trim())) };
         }
         if let Some(v) = self.modelo_padrao {
-            s.modelo_padrao = if v.trim().is_empty() {
-                None
-            } else {
-                Some(v.trim().to_string())
-            };
+            s.modelo_padrao = if v.trim().is_empty() { None } else { Some(v.trim().to_string()) };
         }
         s.sanitize();
     }
@@ -131,13 +123,8 @@ mod tests {
     #[test]
     fn patch_aplica_e_saneia() {
         let mut s = Settings::default();
-        SettingsPatch {
-            porta: Some(80),
-            descarregar_apos_min: Some(3),
-            llama_server_proprio: Some("  ".into()),
-            ..Default::default()
-        }
-        .apply(&mut s);
+        SettingsPatch { porta: Some(80), descarregar_apos_min: Some(3), llama_server_proprio: Some("  ".into()), ..Default::default() }
+            .apply(&mut s);
         assert_eq!(s.porta, PORTA_PADRAO, "porta privilegiada volta ao padrão");
         assert_eq!(s.descarregar_apos_seg, 180);
         assert_eq!(s.llama_server_proprio, None);

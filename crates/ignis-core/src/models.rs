@@ -52,7 +52,13 @@ impl InstalledModel {
     }
 
     /// Monta a partir de um arquivo GGUF no disco.
-    pub fn from_file(id: String, nome: Option<String>, arquivo: PathBuf, origem: Origem, sha256: Option<String>) -> Result<Self, crate::gguf::GgufError> {
+    pub fn from_file(
+        id: String,
+        nome: Option<String>,
+        arquivo: PathBuf,
+        origem: Origem,
+        sha256: Option<String>,
+    ) -> Result<Self, crate::gguf::GgufError> {
         let info = ModelInfo::read(&arquivo)?;
         let tamanho = std::fs::metadata(&arquivo)?.len();
         Ok(Self {
@@ -101,7 +107,7 @@ impl Registry {
     pub fn add(&mut self, m: InstalledModel) -> std::io::Result<()> {
         self.modelos.retain(|x| x.id != m.id);
         self.modelos.push(m);
-        self.modelos.sort_by(|a, b| a.nome.to_lowercase().cmp(&b.nome.to_lowercase()));
+        self.modelos.sort_by_key(|a| a.nome.to_lowercase());
         self.save()
     }
 
@@ -173,8 +179,10 @@ mod tests {
         gguf(&b);
         let mut r = Registry::load(tmp.path().join("modelos.json"));
         r.add(InstalledModel::from_file("a".into(), None, a.clone(), Origem::Catalogo { id: "a".into() }, None).unwrap()).unwrap();
-        r.add(InstalledModel::from_file("b".into(), None, b.clone(), Origem::OllamaReferencia { referencia: "x:1b".into() }, None).unwrap())
-            .unwrap();
+        r.add(
+            InstalledModel::from_file("b".into(), None, b.clone(), Origem::OllamaReferencia { referencia: "x:1b".into() }, None).unwrap(),
+        )
+        .unwrap();
         assert_eq!(r.remove("b", &models).unwrap(), Some(RemoveOutcome::SoDaLista));
         assert!(b.exists(), "arquivo do Ollama continua lá");
         assert_eq!(r.remove("a", &models).unwrap(), Some(RemoveOutcome::Apagado));

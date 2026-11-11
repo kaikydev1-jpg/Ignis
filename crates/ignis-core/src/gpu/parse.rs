@@ -144,10 +144,8 @@ pub struct NvidiaGpu {
 }
 
 /// Comando usado para a consulta (mantido junto do parser para não desencontrar).
-pub const NVIDIA_SMI_ARGS: &[&str] = &[
-    "--query-gpu=name,memory.total,memory.free,driver_version,pci.device_id",
-    "--format=csv,noheader,nounits",
-];
+pub const NVIDIA_SMI_ARGS: &[&str] =
+    &["--query-gpu=name,memory.total,memory.free,driver_version,pci.device_id", "--format=csv,noheader,nounits"];
 
 /// `nvidia-smi --query-gpu=name,memory.total,memory.free,driver_version,pci.device_id --format=csv,noheader,nounits`
 pub fn parse_nvidia_smi(text: &str) -> Vec<NvidiaGpu> {

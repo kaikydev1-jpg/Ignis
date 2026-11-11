@@ -96,7 +96,9 @@ pub fn build(det: &Detection, manifest: &EngineManifest, proprio: Option<&Path>)
     let variants: Vec<&Variant> = manifest.for_platform(so, &det.arq).collect();
     let find = |b: Backend| variants.iter().filter(|v| v.backend == b).copied().collect::<Vec<_>>();
     let principal = det.principal();
-    let tem = |vendor: Vendor| det.placas.iter().any(|g| g.fabricante == vendor && (!g.integrada || principal.map(|p| p.integrada).unwrap_or(false)));
+    let tem = |vendor: Vendor| {
+        det.placas.iter().any(|g| g.fabricante == vendor && (!g.integrada || principal.map(|p| p.integrada).unwrap_or(false)))
+    };
     let mut out: Vec<Candidate> = Vec::new();
 
     let mk = |v: &Variant, disponivel: bool, motivo: String, dica: Option<String>| Candidate {
@@ -117,7 +119,11 @@ pub fn build(det: &Detection, manifest: &EngineManifest, proprio: Option<&Path>)
         // mais nova primeiro
         cuda.sort_by(|a, b| {
             let (x, y) = (a.driver_minimo.clone().unwrap_or_default(), b.driver_minimo.clone().unwrap_or_default());
-            if version_ge(&x, &y) && x != y { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
+            if version_ge(&x, &y) && x != y {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            }
         });
         let escolhida = cuda.iter().find(|v| match (&driver, &v.driver_minimo) {
             (Some(d), Some(min)) => version_ge(d, min),
@@ -145,11 +151,13 @@ pub fn build(det: &Detection, manifest: &EngineManifest, proprio: Option<&Path>)
     }
 
     // ROCm
-    if let Some(g) = det.placas.iter().find(|g| g.fabricante == Vendor::Amd && (!g.integrada || principal.map(|p| p.integrada).unwrap_or(false))) {
+    if let Some(g) =
+        det.placas.iter().find(|g| g.fabricante == Vendor::Amd && (!g.integrada || principal.map(|p| p.integrada).unwrap_or(false)))
+    {
         if let Some(v) = find(Backend::Rocm).first() {
             let gfx = g.alvo_gfx.clone().unwrap_or_default();
-            let compilado = v.alvos_gfx.iter().any(|x| *x == gfx);
-            let oficial = v.alvos_gfx_oficiais.as_ref().map(|l| l.iter().any(|x| *x == gfx)).unwrap_or(true);
+            let compilado = v.alvos_gfx.contains(&gfx);
+            let oficial = v.alvos_gfx_oficiais.as_ref().map(|l| l.contains(&gfx)).unwrap_or(true);
             let c = if gfx.is_empty() {
                 mk(v, false, "Não consegui descobrir o modelo exato da placa AMD (alvo gfx)".into(), None)
             } else if !compilado {
@@ -200,7 +208,11 @@ pub fn build(det: &Detection, manifest: &EngineManifest, proprio: Option<&Path>)
             backend: Backend::Proprio,
             nome: Backend::Proprio.nome().into(),
             disponivel: existe,
-            motivo: if existe { format!("Indicado por você: {}", p.display()) } else { format!("Arquivo não encontrado: {}", p.display()) },
+            motivo: if existe {
+                format!("Indicado por você: {}", p.display())
+            } else {
+                format!("Arquivo não encontrado: {}", p.display())
+            },
             dica: (!existe).then(|| "Confira o caminho em Motor → llama-server próprio.".to_string()),
             tamanho_download: 0,
         });

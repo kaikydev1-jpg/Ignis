@@ -59,7 +59,12 @@ pub fn semver_gt(a: &str, b: &str) -> bool {
 }
 
 /// Compara o remoto com o que está em uso.
-pub fn compare(remoto: RemoteManifest, app_atual: &str, motor_atual: &EngineManifest, catalogo_atual: &Catalog) -> Result<UpdateCheck, String> {
+pub fn compare(
+    remoto: RemoteManifest,
+    app_atual: &str,
+    motor_atual: &EngineManifest,
+    catalogo_atual: &Catalog,
+) -> Result<UpdateCheck, String> {
     remoto.motores.validate()?;
     remoto.catalogo.validate()?;
     Ok(UpdateCheck {

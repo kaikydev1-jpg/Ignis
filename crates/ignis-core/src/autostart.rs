@@ -91,10 +91,7 @@ mod imp {
         }
     }
     pub fn is_enabled() -> bool {
-        RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey_with_flags(RUN, KEY_READ)
-            .and_then(|k| k.get_value::<String, _>(APP_NAME))
-            .is_ok()
+        RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN, KEY_READ).and_then(|k| k.get_value::<String, _>(APP_NAME)).is_ok()
     }
 }
 

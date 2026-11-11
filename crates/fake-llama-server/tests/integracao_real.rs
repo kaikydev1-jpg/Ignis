@@ -82,13 +82,21 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
     let paths = Paths::under(tmp.path());
     paths.ensure().unwrap();
     let porta = free_port();
-    std::fs::write(paths.config_file(), serde_json::to_vec(&json!({"primeira_execucao_feita": true, "porta": porta, "descarregar_apos_seg": 0, "contexto_preferido": 2048})).unwrap()).unwrap();
+    std::fs::write(
+        paths.config_file(),
+        serde_json::to_vec(
+            &json!({"primeira_execucao_feita": true, "porta": porta, "descarregar_apos_seg": 0, "contexto_preferido": 2048}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
 
     // 1) instalação real: download + SHA-256 + extração
     let store = EngineStore::new(paths.engines_dir(), paths.downloads_dir());
     let http = cliente();
     let t0 = Instant::now();
-    let inst = store.install(&http, &manifest, &cpu, &tokio_util::sync::CancellationToken::new(), &|_| {}).await.expect("instalar motor oficial");
+    let inst =
+        store.install(&http, &manifest, &cpu, &tokio_util::sync::CancellationToken::new(), &|_| {}).await.expect("instalar motor oficial");
     eprintln!("motor instalado em {:.1}s: {}", t0.elapsed().as_secs_f32(), inst.executavel.display());
     assert!(inst.executavel.is_file());
     assert!(store.installed(&manifest, &cpu).is_some());

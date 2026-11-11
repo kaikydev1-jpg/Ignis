@@ -10,7 +10,7 @@ fn ids(c: &[Candidate]) -> Vec<(String, bool)> {
     c.iter().map(|c| (c.variante.clone(), c.disponivel)).collect()
 }
 
-fn get<'a>(c: &'a [Candidate], b: Backend) -> &'a Candidate {
+fn get(c: &[Candidate], b: Backend) -> &Candidate {
     c.iter().find(|c| c.backend == b).unwrap_or_else(|| panic!("sem {b:?} em {:?}", ids(c)))
 }
 

@@ -21,22 +21,15 @@ impl Paths {
         if let Some(home) = std::env::var_os("IGNIS_HOME") {
             return Self::under(PathBuf::from(home));
         }
-        let config_dir = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(APP_ID);
-        let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(APP_ID);
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_ID);
+        let data_dir = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_ID);
         Self { config_dir, data_dir }
     }
 
     /// Tudo debaixo de uma pasta (testes e modo portátil).
     pub fn under(base: impl AsRef<Path>) -> Self {
         let base = base.as_ref();
-        Self {
-            config_dir: base.join("config"),
-            data_dir: base.join("dados"),
-        }
+        Self { config_dir: base.join("config"), data_dir: base.join("dados") }
     }
 
     pub fn config_file(&self) -> PathBuf {
@@ -70,14 +63,7 @@ impl Paths {
     }
 
     pub fn ensure(&self) -> std::io::Result<()> {
-        for d in [
-            &self.config_dir,
-            &self.data_dir,
-            &self.models_dir(),
-            &self.engines_dir(),
-            &self.downloads_dir(),
-            &self.logs_dir(),
-        ] {
+        for d in [&self.config_dir, &self.data_dir, &self.models_dir(), &self.engines_dir(), &self.downloads_dir(), &self.logs_dir()] {
             std::fs::create_dir_all(d)?;
         }
         Ok(())

@@ -78,10 +78,7 @@ pub fn free_local_port() -> std::io::Result<u16> {
 
 /// Nome de arquivo seguro a partir de um texto qualquer.
 pub fn safe_file_name(s: &str) -> String {
-    let mut out: String = s
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
-        .collect();
+    let mut out: String = s.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' }).collect();
     while out.starts_with('.') {
         out.remove(0);
     }

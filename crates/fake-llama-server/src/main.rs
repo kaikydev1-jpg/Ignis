@@ -59,12 +59,10 @@ struct App {
 }
 
 fn load_config() -> Config {
-    let path = std::env::var_os("FAKE_LLAMA_CONFIG").map(PathBuf::from).or_else(|| {
-        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("fake.json")))
-    });
-    path.and_then(|p| std::fs::read(p).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+    let path = std::env::var_os("FAKE_LLAMA_CONFIG")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("fake.json"))));
+    path.and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
 fn arg(args: &[String], names: &[&str]) -> Option<String> {
@@ -211,10 +209,7 @@ async fn chat(State(app): State<Arc<App>>, Json(body): Json<Value>) -> Response 
             Some((Ok::<_, std::io::Error>(bytes::Bytes::from(format!("data: {data}\n\n"))), i + 1))
         }
     });
-    Response::builder()
-        .header("content-type", "text/event-stream")
-        .body(Body::from_stream(s))
-        .unwrap()
+    Response::builder().header("content-type", "text/event-stream").body(Body::from_stream(s)).unwrap()
 }
 
 async fn embeddings_route(State(app): State<Arc<App>>, Json(body): Json<Value>) -> Response {

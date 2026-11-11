@@ -142,7 +142,12 @@ pub fn router(motor: Arc<Motor>) -> Router {
 }
 
 async fn root() -> Response {
-    (StatusCode::OK, [(header::CONTENT_TYPE, "text/plain; charset=utf-8")], "Ignis rodando. Estado em /motor/estado; API compatível com OpenAI em /v1.\n").into_response()
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        "Ignis rodando. Estado em /motor/estado; API compatível com OpenAI em /v1.\n",
+    )
+        .into_response()
 }
 
 async fn v1_models(State(m): M) -> Response {

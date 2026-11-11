@@ -26,6 +26,7 @@ pub fn fixture(name: &str) -> RawSources {
         rocminfo: read("rocminfo.txt"),
         nvidia_smi: read("nvidia-smi.csv"),
         kernel: read("kernel.txt").map(|s| s.trim().to_string()),
+        nvidia_modulo: None,
     }
 }
 

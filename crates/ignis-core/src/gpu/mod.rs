@@ -113,6 +113,9 @@ pub struct RawSources {
     pub nvidia_smi: Option<String>,
     /// Versão do kernel (Linux), usada como "versão do driver" do amdgpu.
     pub kernel: Option<String>,
+    /// /sys/module/nvidia/version (driver NVIDIA sem nvidia-smi, ex.: dentro do Flatpak).
+    #[serde(default)]
+    pub nvidia_modulo: Option<String>,
 }
 
 /// Junta as fontes numa lista de placas.
@@ -147,10 +150,7 @@ pub fn merge(raw: &RawSources) -> Vec<Gpu> {
 
     // 2) KFD: alvo gfx por ID de dispositivo.
     for n in &raw.kfd {
-        if let Some(g) = gpus
-            .iter_mut()
-            .find(|g| g.fabricante == Vendor::Amd && g.pci_dispositivo == Some(n.device))
-        {
+        if let Some(g) = gpus.iter_mut().find(|g| g.fabricante == Vendor::Amd && g.pci_dispositivo == Some(n.device)) {
             g.alvo_gfx = n.gfx.clone();
             g.add_source("kfd");
         }
@@ -167,6 +167,14 @@ pub fn merge(raw: &RawSources) -> Vec<Gpu> {
     if let Some(text) = &raw.nvidia_smi {
         for (i, n) in parse::parse_nvidia_smi(text).into_iter().enumerate() {
             merge_nvidia(&mut gpus, &n, i);
+        }
+    }
+
+    // 4b) versão do driver NVIDIA pelo módulo do kernel, se o nvidia-smi não existir
+    if let Some(v) = raw.nvidia_modulo.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        for g in gpus.iter_mut().filter(|g| g.fabricante == Vendor::Nvidia && g.versao_driver.is_none()) {
+            g.versao_driver = Some(v.to_string());
+            g.add_source("modulo-nvidia");
         }
     }
 
@@ -202,7 +210,10 @@ pub fn merge(raw: &RawSources) -> Vec<Gpu> {
     }
     // Integrada AMD com pouca "VRAM" (memória reservada) também conta.
     for g in gpus.iter_mut() {
-        if g.fabricante == Vendor::Amd && g.vram_total_mb.map(|v| v <= 2048).unwrap_or(false) && g.alvo_gfx.as_deref().map(is_apu_gfx).unwrap_or(false) {
+        if g.fabricante == Vendor::Amd
+            && g.vram_total_mb.map(|v| v <= 2048).unwrap_or(false)
+            && g.alvo_gfx.as_deref().map(is_apu_gfx).unwrap_or(false)
+        {
             g.integrada = true;
         }
         g.nome = parse::clean_name(&g.nome);
@@ -216,14 +227,12 @@ fn is_apu_gfx(g: &str) -> bool {
 
 fn merge_vulkan(gpus: &mut Vec<Gpu>, d: &VkDevice) {
     let v = Vendor::from_pci(d.vendor_id);
-    let pos = gpus
-        .iter()
-        .position(|g| g.fabricante == v && g.pci_dispositivo == Some(d.device_id as u16))
-        .or_else(|| {
-            // sem ID PCI (ex.: só vulkaninfo): casa por fabricante se houver só uma
-            let same: Vec<usize> = gpus.iter().enumerate().filter(|(_, g)| g.fabricante == v && g.pci_dispositivo.is_none()).map(|(i, _)| i).collect();
-            (same.len() == 1).then(|| same[0])
-        });
+    let pos = gpus.iter().position(|g| g.fabricante == v && g.pci_dispositivo == Some(d.device_id as u16)).or_else(|| {
+        // sem ID PCI (ex.: só vulkaninfo): casa por fabricante se houver só uma
+        let same: Vec<usize> =
+            gpus.iter().enumerate().filter(|(_, g)| g.fabricante == v && g.pci_dispositivo.is_none()).map(|(i, _)| i).collect();
+        (same.len() == 1).then(|| same[0])
+    });
     let g = match pos {
         Some(i) => &mut gpus[i],
         None => {
@@ -305,14 +314,11 @@ fn merge_rocm(gpus: &mut Vec<Gpu>, a: &RocmAgent) {
 pub fn apply_llama_devices(gpus: &mut [Gpu], devices: &[LlamaDevice]) {
     for d in devices {
         let lower = d.nome.to_lowercase();
-        let target = gpus.iter_mut().find(|g| {
-            let vendor_match = match g.fabricante {
-                Vendor::Amd => lower.contains("amd") || lower.contains("radeon"),
-                Vendor::Nvidia => lower.contains("nvidia") || lower.contains("geforce") || lower.contains("rtx"),
-                Vendor::Intel => lower.contains("intel"),
-                Vendor::Outro => false,
-            };
-            vendor_match
+        let target = gpus.iter_mut().find(|g| match g.fabricante {
+            Vendor::Amd => lower.contains("amd") || lower.contains("radeon"),
+            Vendor::Nvidia => lower.contains("nvidia") || lower.contains("geforce") || lower.contains("rtx"),
+            Vendor::Intel => lower.contains("intel"),
+            Vendor::Outro => false,
         });
         if let Some(g) = target {
             g.add_source("llama-server");
@@ -364,7 +370,9 @@ impl Detection {
         let mut placas: Vec<String> = self
             .placas
             .iter()
-            .map(|g| format!("{}|{:?}|{}|{}", g.nome, g.pci_dispositivo, g.versao_driver.as_deref().unwrap_or(""), g.vram_total_mb.unwrap_or(0)))
+            .map(|g| {
+                format!("{}|{:?}|{}|{}", g.nome, g.pci_dispositivo, g.versao_driver.as_deref().unwrap_or(""), g.vram_total_mb.unwrap_or(0))
+            })
             .collect();
         placas.sort();
         for p in placas {
@@ -392,6 +400,29 @@ pub async fn run_tool(program: &str, args: &[&str], timeout: Duration) -> Option
         return None;
     }
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Como `run_tool`, mas junta a saída padrão e a de erros.
+pub async fn run_tool_all(program: &str, args: &[&str], timeout: Duration) -> Option<String> {
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(dir) = Path::new(program).parent() {
+        cmd.current_dir(dir);
+        if cfg!(target_os = "linux") {
+            cmd.env("LD_LIBRARY_PATH", dir);
+        }
+    }
+    crate::util::hide_console(&mut cmd);
+    let child = cmd.spawn().ok()?;
+    let out = tokio::time::timeout(timeout, child.wait_with_output()).await.ok()?.ok()?;
+    let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
+    s.push('\n');
+    s.push_str(&String::from_utf8_lossy(&out.stderr));
+    Some(s)
 }
 
 /// Procura uma biblioteca do sistema.
@@ -426,11 +457,7 @@ pub fn find_system_lib(name: &str, ldconfig_cache: Option<&str>) -> bool {
 
 /// Pastas extras de bibliotecas que o motor precisa enxergar (ROCm em /opt).
 pub fn extra_lib_dirs() -> Vec<std::path::PathBuf> {
-    ["/opt/rocm/lib", "/opt/rocm/lib64"]
-        .iter()
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.exists())
-        .collect()
+    ["/opt/rocm/lib", "/opt/rocm/lib64"].iter().map(std::path::PathBuf::from).filter(|p| p.exists()).collect()
 }
 
 /// Coleta tudo do sistema real.
@@ -443,6 +470,7 @@ pub async fn detect(libs_to_probe: &[String]) -> Detection {
         raw.sysfs = sysfs::read_drm_cards(sys);
         raw.kfd = sysfs::read_kfd_nodes(sys);
         raw.kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease").ok().map(|s| s.trim().to_string());
+        raw.nvidia_modulo = std::fs::read_to_string("/sys/module/nvidia/version").ok().map(|s| s.trim().to_string());
     }
     if cfg!(windows) {
         raw.dxgi = tokio::task::spawn_blocking(windows::enumerate).await.unwrap_or_default();
@@ -476,12 +504,8 @@ pub async fn detect(libs_to_probe: &[String]) -> Detection {
     } else {
         None
     };
-    let libs = libs_to_probe
-        .iter()
-        .map(|l| (l.clone(), find_system_lib(l, ldcache.as_deref())))
-        .collect();
-    let kfd_acessivel = cfg!(target_os = "linux")
-        && std::fs::OpenOptions::new().read(true).write(true).open("/dev/kfd").is_ok();
+    let libs = libs_to_probe.iter().map(|l| (l.clone(), find_system_lib(l, ldcache.as_deref()))).collect();
+    let kfd_acessivel = cfg!(target_os = "linux") && std::fs::OpenOptions::new().read(true).write(true).open("/dev/kfd").is_ok();
     let (ram_total_mb, ram_livre_mb) = crate::util::system_memory_mb();
     Detection {
         sistema: crate::distro::Sistema::detect(),
@@ -499,6 +523,33 @@ pub async fn detect(libs_to_probe: &[String]) -> Detection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nvidia_sem_nvidia_smi_usa_modulo_do_kernel() {
+        let raw = RawSources {
+            sysfs: vec![SysfsCard { vendor: 0x10de, device: 0x2504, driver: Some("nvidia".into()), ..Default::default() }],
+            nvidia_modulo: Some("580.95.05\n".into()),
+            ..Default::default()
+        };
+        let g = merge(&raw);
+        assert_eq!(g[0].versao_driver.as_deref(), Some("580.95.05"));
+        assert_eq!(g[0].nome, "NVIDIA (dispositivo 0x2504)");
+    }
+
+    #[test]
+    fn list_devices_completa_vram() {
+        let raw = RawSources {
+            sysfs: vec![SysfsCard { vendor: 0x10de, device: 0x2504, driver: Some("nvidia".into()), ..Default::default() }],
+            ..Default::default()
+        };
+        let mut g = merge(&raw);
+        apply_llama_devices(
+            &mut g,
+            &parse::parse_list_devices("Available devices:\n  Vulkan0: NVIDIA GeForce RTX 3060 (12288 MiB, 11500 MiB free)\n"),
+        );
+        assert_eq!(g[0].vram_total_mb, Some(12288));
+        assert_eq!(g[0].vram_livre_mb, Some(11500));
+    }
 
     #[test]
     fn vendor_from_pci() {

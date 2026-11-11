@@ -193,7 +193,7 @@ async fn importar_do_ollama_sem_mexer_nele() {
     let amb = ambiente(Opcoes::default());
     let m = &amb.motor;
     // "usar daqui": lê no lugar
-    let id = m.import_ollama("qwen3:0.6b", "usar", &[ollama_dir.clone()]).unwrap();
+    let id = m.import_ollama("qwen3:0.6b", "usar", std::slice::from_ref(&ollama_dir)).unwrap();
     assert_eq!(id, "ollama/qwen3:0.6b");
     let im = m.installed_models().into_iter().find(|x| x.id == id).unwrap();
     assert_eq!(im.arquivo, blob, "não copiou");
@@ -206,7 +206,7 @@ async fn importar_do_ollama_sem_mexer_nele() {
     assert!(blob.exists(), "nunca apaga nada do Ollama");
 
     // "copiar"
-    let id2 = m.import_ollama("qwen3:0.6b", "copiar", &[ollama_dir.clone()]).unwrap();
+    let id2 = m.import_ollama("qwen3:0.6b", "copiar", std::slice::from_ref(&ollama_dir)).unwrap();
     esperar("copiar", Duration::from_secs(10), || m.installed_models().iter().any(|x| x.id == id2)).await;
     let copia = m.installed_models().into_iter().find(|x| x.id == id2).unwrap();
     assert!(copia.arquivo.starts_with(amb.paths.models_dir()));

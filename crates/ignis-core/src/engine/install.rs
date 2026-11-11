@@ -71,12 +71,7 @@ impl EngineStore {
             return None;
         }
         let exe = dir.join(&marker.executavel);
-        exe.is_file().then(|| InstalledEngine {
-            versao: m.llama_cpp.versao.clone(),
-            variante: v.id.clone(),
-            pasta: dir,
-            executavel: exe,
-        })
+        exe.is_file().then(|| InstalledEngine { versao: m.llama_cpp.versao.clone(), variante: v.id.clone(), pasta: dir, executavel: exe })
     }
 
     /// Baixa (com retomada) e instala. `progress` recebe bytes somados de todos os arquivos.
@@ -164,7 +159,13 @@ impl EngineStore {
 
     /// Instala a partir de um executável local (testes com a placa simulada
     /// e instalação manual). Copia o executável e os arquivos vizinhos indicados.
-    pub fn install_from_files(&self, m: &EngineManifest, v: &Variant, exe: &Path, extras: &[(&str, &[u8])]) -> std::io::Result<InstalledEngine> {
+    pub fn install_from_files(
+        &self,
+        m: &EngineManifest,
+        v: &Variant,
+        exe: &Path,
+        extras: &[(&str, &[u8])],
+    ) -> std::io::Result<InstalledEngine> {
         let dir = self.variant_dir(&m.llama_cpp.versao, &v.id);
         std::fs::create_dir_all(&dir)?;
         let exe_name = server_exe_name();

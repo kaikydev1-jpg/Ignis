@@ -123,12 +123,7 @@ impl EngineManifest {
 
     /// Todas as bibliotecas do sistema que vale a pena procurar.
     pub fn libs_to_probe(&self, so: &str) -> Vec<String> {
-        let mut v: Vec<String> = self
-            .variantes
-            .iter()
-            .filter(|x| x.so == so)
-            .flat_map(|x| x.libs_do_sistema.iter().cloned())
-            .collect();
+        let mut v: Vec<String> = self.variantes.iter().filter(|x| x.so == so).flat_map(|x| x.libs_do_sistema.iter().cloned()).collect();
         v.sort();
         v.dedup();
         v

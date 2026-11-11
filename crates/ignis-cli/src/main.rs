@@ -65,7 +65,12 @@ async fn main() {
         }
         "versao" | "--version" | "-V" => {
             let m = EngineManifest::embedded();
-            println!("Ignis {} (API {}) — llama.cpp {}", ignis_core::consts::APP_VERSION, ignis_core::consts::API_VERSION, m.llama_cpp.versao);
+            println!(
+                "Ignis {} (API {}) — llama.cpp {}",
+                ignis_core::consts::APP_VERSION,
+                ignis_core::consts::API_VERSION,
+                m.llama_cpp.versao
+            );
         }
         _ => {
             eprintln!("{AJUDA}");

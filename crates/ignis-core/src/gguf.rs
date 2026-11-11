@@ -25,7 +25,10 @@ pub enum Value {
     Bool(bool),
     Str(String),
     /// Arrays: guardamos o tamanho e, se forem números pequenos, o maior valor.
-    Array { len: u64, max_int: Option<i64> },
+    Array {
+        len: u64,
+        max_int: Option<i64>,
+    },
 }
 
 impl Value {
@@ -207,17 +210,13 @@ pub struct ModelInfo {
 
 impl ModelInfo {
     pub fn from_metadata(m: &BTreeMap<String, Value>) -> Self {
-        let arch = m
-            .get("general.architecture")
-            .and_then(|v| v.as_str())
-            .unwrap_or("desconhecida")
-            .to_string();
+        let arch = m.get("general.architecture").and_then(|v| v.as_str()).unwrap_or("desconhecida").to_string();
         let get = |k: &str| m.get(&format!("{arch}.{k}")).and_then(|v| v.as_u64());
         let camadas = get("block_count").unwrap_or(0) as u32;
         let embd = get("embedding_length").unwrap_or(0) as u32;
         let cabecas = get("attention.head_count").unwrap_or(0) as u32;
         let cabecas_kv = get("attention.head_count_kv").unwrap_or(cabecas as u64) as u32;
-        let head_dim = if cabecas > 0 { embd / cabecas } else { 0 };
+        let head_dim = embd.checked_div(cabecas).unwrap_or(0);
         let dim_k = get("attention.key_length").unwrap_or(head_dim as u64) as u32;
         let dim_v = get("attention.value_length").unwrap_or(head_dim as u64) as u32;
         let nome = m.get("general.name").and_then(|v| v.as_str()).map(String::from);
@@ -226,10 +225,7 @@ impl ModelInfo {
             arch.as_str(),
             "bert" | "nomic-bert" | "nomic-bert-moe" | "jina-bert-v2" | "jina-bert-v3" | "t5encoder" | "modern-bert"
         );
-        let nome_embed = nome
-            .as_deref()
-            .map(|n| n.to_lowercase().contains("embed"))
-            .unwrap_or(false);
+        let nome_embed = nome.as_deref().map(|n| n.to_lowercase().contains("embed")).unwrap_or(false);
         Self {
             embeddings: encoder_only || pooling > 0 || nome_embed,
             tem_template_chat: m.contains_key("tokenizer.chat_template"),

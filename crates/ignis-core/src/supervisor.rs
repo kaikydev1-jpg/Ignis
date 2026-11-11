@@ -131,13 +131,23 @@ fn push_log(log: &LogBuf, line: String) {
 pub fn classify_failure(log: &[String], exit_code: Option<i32>) -> String {
     let all = log.join("\n").to_lowercase();
     let has = |pats: &[&str]| pats.iter().any(|p| all.contains(p));
-    if has(&["out of memory", "failed to allocate", "erroroutofdevicememory", "cudamalloc failed", "hiperroroutofmemory", "unable to allocate", "outofdevicememory"]) {
+    if has(&[
+        "out of memory",
+        "failed to allocate",
+        "erroroutofdevicememory",
+        "cudamalloc failed",
+        "hiperroroutofmemory",
+        "unable to allocate",
+        "outofdevicememory",
+    ]) {
         return "A placa ficou sem memória para este modelo. Tente um modelo menor ou feche jogos e outros programas.".into();
     }
     if has(&["hiperrornobinaryforgpu", "no kernel image is available", "invalid device function", "unsupported gpu", "no compatible gpu"]) {
         return "Este motor não tem suporte para a sua placa.".into();
     }
-    if has(&["error while loading shared libraries", "cannot open shared object", "could not load library"]) || exit_code == Some(-1073741515) {
+    if has(&["error while loading shared libraries", "cannot open shared object", "could not load library"])
+        || exit_code == Some(-1073741515)
+    {
         return "Faltam bibliotecas do sistema para este motor (driver desatualizado ou incompleto).".into();
     }
     if has(&["unknown model architecture", "unknown architecture", "unsupported model architecture"]) {
@@ -163,11 +173,7 @@ pub fn classify_failure(log: &[String], exit_code: Option<i32>) -> String {
 
 fn prepare_command(spec: &LaunchSpec, porta: u16) -> Command {
     let mut cmd = Command::new(&spec.exe);
-    cmd.args(spec.args(porta))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
+    cmd.args(spec.args(porta)).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     if let Some(dir) = spec.exe.parent() {
         cmd.current_dir(dir);
         if cfg!(target_os = "linux") {
@@ -250,9 +256,12 @@ async fn start_once(spec: &LaunchSpec, client: &reqwest::Client, timeout: Durati
     let mut child = cmd.spawn().map_err(|e| StartError::Spawn(format!("{} ({e})", spec.exe.display())))?;
     attach_to_job(&child);
     let log: LogBuf = Arc::new(Mutex::new(VecDeque::new()));
-    for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>)]
-        .into_iter()
-        .flatten()
+    for stream in [
+        child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+        child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
+    ]
+    .into_iter()
+    .flatten()
     {
         let log = log.clone();
         tokio::spawn(async move {
@@ -305,10 +314,14 @@ mod tests {
     #[test]
     fn explica_falhas() {
         let l = |s: &str| vec![s.to_string()];
-        assert!(classify_failure(&l("ggml_vulkan: Device memory allocation of size 123 failed. ErrorOutOfDeviceMemory"), Some(1)).contains("sem memória"));
+        assert!(classify_failure(&l("ggml_vulkan: Device memory allocation of size 123 failed. ErrorOutOfDeviceMemory"), Some(1))
+            .contains("sem memória"));
         assert!(classify_failure(&l("rocBLAS error: hipErrorNoBinaryForGpu"), Some(1)).contains("suporte para a sua placa"));
-        assert!(classify_failure(&l("./llama-server: error while loading shared libraries: libvulkan.so.1"), Some(127)).contains("bibliotecas"));
-        assert!(classify_failure(&l("llama_model_load: error loading model architecture: unknown model architecture: 'xyz'"), Some(1)).contains("não reconhece"));
+        assert!(
+            classify_failure(&l("./llama-server: error while loading shared libraries: libvulkan.so.1"), Some(127)).contains("bibliotecas")
+        );
+        assert!(classify_failure(&l("llama_model_load: error loading model architecture: unknown model architecture: 'xyz'"), Some(1))
+            .contains("não reconhece"));
         assert!(classify_failure(&l("gguf_init_from_file: invalid magic characters"), Some(1)).contains("corrompido"));
         assert!(classify_failure(&l("nada útil"), Some(3)).contains("código 3"));
     }

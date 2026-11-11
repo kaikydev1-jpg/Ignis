@@ -111,9 +111,7 @@ pub fn scan(models_dir: &Path) -> Vec<OllamaModel> {
             continue;
         }
         let blobs = models_dir.join("blobs");
-        let caminho = [blobs.join(format!("sha256-{hex}")), blobs.join(format!("sha256:{hex}"))]
-            .into_iter()
-            .find(|p| p.is_file());
+        let caminho = [blobs.join(format!("sha256-{hex}")), blobs.join(format!("sha256:{hex}"))].into_iter().find(|p| p.is_file());
         let Some(caminho) = caminho else { continue };
         if !is_gguf_file(&caminho) {
             continue;
@@ -147,13 +145,7 @@ pub fn model_id(referencia: &str) -> String {
 
 /// Copia (lendo o original sem alterá-lo) conferindo o SHA-256 no caminho.
 /// `cancel` é checado a cada bloco; `progress` recebe bytes copiados.
-pub fn copy_verified(
-    src: &Path,
-    dst: &Path,
-    sha256: &str,
-    cancel: &dyn Fn() -> bool,
-    progress: &dyn Fn(u64),
-) -> std::io::Result<bool> {
+pub fn copy_verified(src: &Path, dst: &Path, sha256: &str, cancel: &dyn Fn() -> bool, progress: &dyn Fn(u64)) -> std::io::Result<bool> {
     let tmp = crate::download::part_path(dst);
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent)?;

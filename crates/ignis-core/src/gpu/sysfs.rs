@@ -64,9 +64,7 @@ pub fn read_drm_cards(sys_root: &Path) -> Vec<SysfsCard> {
             .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
             .filter(|s| s.contains(':'))
             .or_else(|| {
-                read_trim(&dev.join("uevent")).and_then(|u| {
-                    u.lines().find_map(|l| l.strip_prefix("PCI_SLOT_NAME=").map(String::from))
-                })
+                read_trim(&dev.join("uevent")).and_then(|u| u.lines().find_map(|l| l.strip_prefix("PCI_SLOT_NAME=").map(String::from)))
             });
         let card = SysfsCard {
             vendor,
@@ -177,7 +175,13 @@ mod tests {
                 vram_usada_mb: Some(400),
                 pci_slot: Some("0000:03:00.0".into()),
             },
-            SysfsCard { vendor: 0x8086, device: 0x4680, driver: Some("i915".into()), pci_slot: Some("0000:00:02.0".into()), ..Default::default() },
+            SysfsCard {
+                vendor: 0x8086,
+                device: 0x4680,
+                driver: Some("i915".into()),
+                pci_slot: Some("0000:00:02.0".into()),
+                ..Default::default()
+            },
         ];
         let kfd = vec![KfdNode { vendor: 4098, device: 0x73ff, gfx: Some("gfx1032".into()) }];
         write_fake_sys(dir.path(), &cards, &kfd).unwrap();

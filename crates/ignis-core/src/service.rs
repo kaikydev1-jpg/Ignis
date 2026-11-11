@@ -504,7 +504,10 @@ impl Motor {
                         self.set_fase(Fase::Parado, "");
                         let min = limite / 60;
                         let quanto = if min >= 1 { format!("{min} min") } else { format!("{limite} s") };
-                        self.aviso("info", format!("Modelo {} descarregado depois de {quanto} parado, para liberar a placa.", l.info.modelo_nome));
+                        self.aviso(
+                            "info",
+                            format!("Modelo {} descarregado depois de {quanto} parado, para liberar a placa.", l.info.modelo_nome),
+                        );
                     }
                 }
             }
@@ -533,7 +536,21 @@ impl Motor {
             return d.clone();
         }
         let libs = self.manifest().libs_to_probe(crate::engine::manifest::current_os());
-        let det = gpu::detect(&libs).await;
+        let mut det = gpu::detect(&libs).await;
+        // VRAM desconhecida (ex.: NVIDIA no Flatpak): pergunta ao próprio motor instalado
+        if det.placas.iter().any(|g| g.vram_total_mb.is_none() && !g.integrada) {
+            let exe = self
+                .candidates_for(&det)
+                .into_iter()
+                .filter(|c| c.disponivel && c.backend.usa_placa() && c.backend != Backend::Proprio)
+                .find_map(|c| self.engine_exe(&c.variante));
+            if let Some(exe) = exe {
+                let exe_s = exe.to_string_lossy().into_owned();
+                if let Some(out) = gpu::run_tool_all(&exe_s, &["--list-devices"], Duration::from_secs(15)).await {
+                    gpu::apply_llama_devices(&mut det.placas, &gpu::parse::parse_list_devices(&out));
+                }
+            }
+        }
         *self.detection.write().unwrap() = Some(det.clone());
         self.bump();
         det
@@ -545,8 +562,12 @@ impl Motor {
 
     pub fn candidates(&self) -> Vec<Candidate> {
         let Some(det) = self.detection() else { return Vec::new() };
+        self.candidates_for(&det)
+    }
+
+    fn candidates_for(&self, det: &Detection) -> Vec<Candidate> {
         let proprio = self.settings().llama_server_proprio;
-        build_candidates(&det, &self.manifest(), proprio.as_deref())
+        build_candidates(det, &self.manifest(), proprio.as_deref())
     }
 
     fn bench_is_current(&self, det: &Detection) -> bool {
@@ -575,10 +596,13 @@ impl Motor {
     pub fn engine_order(&self) -> Vec<(Candidate, PathBuf)> {
         let Some(det) = self.detection() else { return Vec::new() };
         let s = self.settings();
-        let cands: Vec<Candidate> = build_candidates(&det, &self.manifest(), s.llama_server_proprio.as_deref()).into_iter().filter(|c| c.disponivel).collect();
-        let ordem_teste = if self.bench_is_current(&det) { self.estado.lock().unwrap().teste.as_ref().map(|t| t.ordem.clone()) } else { None };
+        let cands: Vec<Candidate> =
+            build_candidates(&det, &self.manifest(), s.llama_server_proprio.as_deref()).into_iter().filter(|c| c.disponivel).collect();
+        let ordem_teste =
+            if self.bench_is_current(&det) { self.estado.lock().unwrap().teste.as_ref().map(|t| t.ordem.clone()) } else { None };
         let failed = self.session_failed.lock().unwrap().clone();
-        let mut v: Vec<(Candidate, PathBuf, (bool, bool, u32, u8))> = cands
+        type Chave = (bool, bool, u32, u8);
+        let mut v: Vec<(Candidate, PathBuf, Chave)> = cands
             .into_iter()
             .filter_map(|c| {
                 let exe = self.engine_exe(&c.variante)?;
@@ -720,7 +744,10 @@ impl Motor {
                             plano.todas_na_placa = false;
                             plano.camadas_na_placa /= 2;
                             plano.contexto = plano.contexto.min(4096);
-                            self.aviso("aviso", format!("A placa ficou sem memória; tentando com menos camadas na placa ({}).", plano.camadas_na_placa));
+                            self.aviso(
+                                "aviso",
+                                format!("A placa ficou sem memória; tentando com menos camadas na placa ({}).", plano.camadas_na_placa),
+                            );
                             continue;
                         }
                         if is_model_specific(&motivo) {
@@ -784,14 +811,15 @@ impl Motor {
             None => {
                 let carregado = self.loaded_info().filter(|i| i.embeddings == embeddings).and_then(|i| reg.get(&i.modelo_id));
                 let padrao = self.settings().modelo_padrao.and_then(|id| reg.get(&id).filter(|m| m.embeddings == embeddings));
-                carregado
-                    .or(padrao)
-                    .or_else(|| reg.modelos.iter().find(|m| m.embeddings == embeddings && m.existe()))
-                    .ok_or(if embeddings {
-                        MotorError::Invalido("Nenhum modelo de embeddings instalado. Baixe o \"Qwen3 Embedding 0.6B\" na seção Modelos.".into())
+                carregado.or(padrao).or_else(|| reg.modelos.iter().find(|m| m.embeddings == embeddings && m.existe())).ok_or(
+                    if embeddings {
+                        MotorError::Invalido(
+                            "Nenhum modelo de embeddings instalado. Baixe o \"Qwen3 Embedding 0.6B\" na seção Modelos.".into(),
+                        )
                     } else {
                         MotorError::SemModelo
-                    })?
+                    },
+                )?
             }
         };
         if m.embeddings != embeddings {
@@ -917,7 +945,11 @@ impl Motor {
 
     /// Baixa um modelo do catálogo (retoma se já houver parte baixada).
     pub fn start_model_download(self: &Arc<Self>, catalog_id: &str) -> Result<String, MotorError> {
-        let m = self.catalog().get(catalog_id).cloned().ok_or_else(|| MotorError::Invalido(format!("\"{catalog_id}\" não está no catálogo.")))?;
+        let m = self
+            .catalog()
+            .get(catalog_id)
+            .cloned()
+            .ok_or_else(|| MotorError::Invalido(format!("\"{catalog_id}\" não está no catálogo.")))?;
         if self.registry.lock().unwrap().get(&m.id).map(|x| x.existe()).unwrap_or(false) {
             return Err(MotorError::Invalido(format!("{} já está instalado.", m.nome)));
         }
@@ -942,12 +974,23 @@ impl Motor {
         Ok(tid)
     }
 
-    async fn download_catalog_model(&self, m: &crate::catalog::CatalogModel, tid: &str, cancel: &CancellationToken) -> Result<(), DownloadError> {
+    async fn download_catalog_model(
+        &self,
+        m: &crate::catalog::CatalogModel,
+        tid: &str,
+        cancel: &CancellationToken,
+    ) -> Result<(), DownloadError> {
         let dest = self.paths.models_dir().join(&m.arquivo);
         let cb = |p: Progress| self.task_progress(tid, p);
         download::download_file(&self.http, &m.download_url(), &dest, Some(&m.sha256), Some(m.tamanho), cancel, &cb).await?;
-        let mut im = InstalledModel::from_file(m.id.clone(), Some(m.nome.clone()), dest, Origem::Catalogo { id: m.id.clone() }, Some(m.sha256.clone()))
-            .map_err(|e| DownloadError::Io(std::io::Error::other(e.to_string())))?;
+        let mut im = InstalledModel::from_file(
+            m.id.clone(),
+            Some(m.nome.clone()),
+            dest,
+            Origem::Catalogo { id: m.id.clone() },
+            Some(m.sha256.clone()),
+        )
+        .map_err(|e| DownloadError::Io(std::io::Error::other(e.to_string())))?;
         im.licenca = Some(m.licenca.clone());
         im.embeddings = im.embeddings || m.embeddings();
         self.registry.lock().unwrap().add(im)?;
@@ -1013,8 +1056,14 @@ impl Motor {
         let id = ollama::model_id(&m.referencia);
         match modo {
             "usar" => {
-                let im = InstalledModel::from_file(id.clone(), Some(m.referencia.clone()), m.caminho.clone(), Origem::OllamaReferencia { referencia: m.referencia.clone() }, Some(m.sha256.clone()))
-                    .map_err(|e| MotorError::Falhou(e.to_string()))?;
+                let im = InstalledModel::from_file(
+                    id.clone(),
+                    Some(m.referencia.clone()),
+                    m.caminho.clone(),
+                    Origem::OllamaReferencia { referencia: m.referencia.clone() },
+                    Some(m.sha256.clone()),
+                )
+                .map_err(|e| MotorError::Falhou(e.to_string()))?;
                 self.registry.lock().unwrap().add(im).map_err(|e| MotorError::Falhou(e.to_string()))?;
                 self.aviso("info", format!("{} importado do Ollama (lido direto da pasta do Ollama).", m.referencia));
                 Ok(id)
@@ -1023,7 +1072,8 @@ impl Motor {
                 let tid = format!("importacao:{}", m.referencia);
                 let cancel = self.task_begin(&tid, "importacao", &m.referencia, Some(m.tamanho))?;
                 let me = self.clone();
-                let dest = self.paths.models_dir().join(format!("{}.gguf", crate::util::safe_file_name(&format!("ollama-{}", m.referencia))));
+                let dest =
+                    self.paths.models_dir().join(format!("{}.gguf", crate::util::safe_file_name(&format!("ollama-{}", m.referencia))));
                 tokio::spawn(async move {
                     let me2 = me.clone();
                     let tid2 = tid.clone();
@@ -1033,12 +1083,20 @@ impl Motor {
                     let c2 = cancel.clone();
                     let total = m.tamanho;
                     let r = tokio::task::spawn_blocking(move || {
-                        ollama::copy_verified(&src, &d2, &sha, &|| c2.is_cancelled(), &|n| me2.task_progress(&tid2, Progress { baixado: n, total: Some(total) }))
+                        ollama::copy_verified(&src, &d2, &sha, &|| c2.is_cancelled(), &|n| {
+                            me2.task_progress(&tid2, Progress { baixado: n, total: Some(total) })
+                        })
                     })
                     .await;
                     match r {
                         Ok(Ok(true)) => {
-                            match InstalledModel::from_file(id.clone(), Some(m.referencia.clone()), dest, Origem::OllamaCopia { referencia: m.referencia.clone() }, Some(m.sha256.clone())) {
+                            match InstalledModel::from_file(
+                                id.clone(),
+                                Some(m.referencia.clone()),
+                                dest,
+                                Origem::OllamaCopia { referencia: m.referencia.clone() },
+                                Some(m.sha256.clone()),
+                            ) {
                                 Ok(im) => {
                                     let _ = me.registry.lock().unwrap().add(im);
                                     me.task_finish(&tid, "concluida", None);
@@ -1047,7 +1105,11 @@ impl Motor {
                                 Err(e) => me.task_finish(&tid, "erro", Some(e.to_string())),
                             }
                         }
-                        Ok(Ok(false)) => me.task_finish(&tid, "erro", Some("A cópia não conferiu com o original (SHA-256). Nada foi alterado no Ollama.".into())),
+                        Ok(Ok(false)) => me.task_finish(
+                            &tid,
+                            "erro",
+                            Some("A cópia não conferiu com o original (SHA-256). Nada foi alterado no Ollama.".into()),
+                        ),
                         Ok(Err(e)) if e.kind() == std::io::ErrorKind::Interrupted => me.task_finish(&tid, "pausada", None),
                         Ok(Err(e)) => me.task_finish(&tid, "erro", Some(e.to_string())),
                         Err(e) => me.task_finish(&tid, "erro", Some(e.to_string())),
@@ -1066,7 +1128,8 @@ impl Motor {
         }
         let stem = caminho.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "modelo".into());
         let id = format!("arquivo/{}", crate::util::safe_file_name(&stem));
-        let im = InstalledModel::from_file(id.clone(), Some(stem), caminho.to_path_buf(), Origem::Arquivo, None).map_err(|e| MotorError::Falhou(e.to_string()))?;
+        let im = InstalledModel::from_file(id.clone(), Some(stem), caminho.to_path_buf(), Origem::Arquivo, None)
+            .map_err(|e| MotorError::Falhou(e.to_string()))?;
         self.registry.lock().unwrap().add(im).map_err(|e| MotorError::Falhou(e.to_string()))?;
         self.bump();
         Ok(id)
@@ -1095,7 +1158,11 @@ impl Motor {
             .filter(|c| c.disponivel && c.variante != VARIANTE_PROPRIA)
             .map(|c| {
                 let instalado = self.engine_exe(&c.variante).is_some();
-                let falta = if instalado { 0 } else { c.tamanho_download.saturating_sub(m.variant(&c.variante).map(|v| self.store.partial_bytes(v)).unwrap_or(0)) };
+                let falta = if instalado {
+                    0
+                } else {
+                    c.tamanho_download.saturating_sub(m.variant(&c.variante).map(|v| self.store.partial_bytes(v)).unwrap_or(0))
+                };
                 total += falta;
                 json!({"variante": c.variante, "nome": c.nome, "tamanho": c.tamanho_download, "instalado": instalado})
             })
@@ -1218,7 +1285,8 @@ impl Motor {
             Some(d) => d,
             None => self.detect_now().await,
         };
-        let cands: Vec<(Candidate, PathBuf)> = self.candidates().into_iter().filter(|c| c.disponivel).filter_map(|c| self.engine_exe(&c.variante).map(|e| (c, e))).collect();
+        let cands: Vec<(Candidate, PathBuf)> =
+            self.candidates().into_iter().filter(|c| c.disponivel).filter_map(|c| self.engine_exe(&c.variante).map(|e| (c, e))).collect();
         if cands.is_empty() {
             self.aviso("erro", "Nenhum motor instalado para testar. Clique em Preparar.");
             return;
@@ -1329,7 +1397,8 @@ impl Motor {
         let remoto = info.remoto.clone().ok_or_else(|| MotorError::Invalido("Procure atualizações primeiro.".into()))?;
         match item {
             "catalogo" => {
-                crate::paths::write_json(&self.paths.catalog_override(), &remoto.catalogo).map_err(|e| MotorError::Falhou(e.to_string()))?;
+                crate::paths::write_json(&self.paths.catalog_override(), &remoto.catalogo)
+                    .map_err(|e| MotorError::Falhou(e.to_string()))?;
                 *self.catalog.write().unwrap() = remoto.catalogo.clone();
                 self.aviso("info", format!("Catálogo de modelos atualizado (versão {}).", remoto.catalogo.versao));
                 Ok(())
@@ -1339,11 +1408,19 @@ impl Motor {
                 let me = self.clone();
                 tokio::spawn(async move {
                     let atual = me.manifest();
-                    let instaladas: Vec<String> = atual.variantes.iter().filter(|v| me.store.installed(&atual, v).is_some()).map(|v| v.id.clone()).collect();
+                    let instaladas: Vec<String> =
+                        atual.variantes.iter().filter(|v| me.store.installed(&atual, v).is_some()).map(|v| v.id.clone()).collect();
                     for id in &instaladas {
                         let Some(v) = novo.variant(id).cloned() else { continue };
                         let tid = format!("atualizacao:{id}");
-                        let Ok(cancel) = me.task_begin(&tid, "atualizacao", &format!("Motor {} ({})", v.backend.nome(), novo.llama_cpp.versao), Some(v.tamanho_total())) else { continue };
+                        let Ok(cancel) = me.task_begin(
+                            &tid,
+                            "atualizacao",
+                            &format!("Motor {} ({})", v.backend.nome(), novo.llama_cpp.versao),
+                            Some(v.tamanho_total()),
+                        ) else {
+                            continue;
+                        };
                         let cb = |p: Progress| me.task_progress(&tid, p);
                         match me.store.install(&me.http, &novo, &v, &cancel, &cb).await {
                             Ok(_) => me.task_finish(&tid, "concluida", None),
@@ -1365,7 +1442,10 @@ impl Motor {
                     *me.manifest.write().unwrap() = novo.clone();
                     me.unload().await;
                     me.store.remove_other_versions(&novo.llama_cpp.versao);
-                    me.aviso("info", format!("Motor atualizado para o llama.cpp {}. Testando a velocidade de novo…", novo.llama_cpp.versao));
+                    me.aviso(
+                        "info",
+                        format!("Motor atualizado para o llama.cpp {}. Testando a velocidade de novo…", novo.llama_cpp.versao),
+                    );
                     me.benchmark_inner().await;
                 });
                 Ok(())
