@@ -541,7 +541,7 @@ impl Motor {
         let libs = self.manifest().libs_to_probe(crate::engine::manifest::current_os());
         let mut det = gpu::detect(&libs).await;
         // VRAM desconhecida (ex.: NVIDIA no Flatpak): pergunta ao próprio motor instalado
-        if det.placas.iter().any(|g| g.vram_total_mb.is_none() && !g.integrada) {
+        if det.placas.iter().any(|g| g.vram_total_mb.is_none() && g.fabricante != gpu::Vendor::Outro) {
             let exe = self
                 .candidates_for(&det)
                 .into_iter()

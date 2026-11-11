@@ -322,6 +322,10 @@ pub fn apply_llama_devices(gpus: &mut [Gpu], devices: &[LlamaDevice]) {
         });
         if let Some(g) = target {
             g.add_source("llama-server");
+            // nome completo do motor quando só tínhamos o ID PCI
+            if g.nome.contains("(dispositivo 0x") {
+                g.nome = parse::clean_name(&d.nome);
+            }
             if let Some(l) = d.livre_mb {
                 g.vram_livre_mb = Some(l);
             }

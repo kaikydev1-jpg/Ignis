@@ -9,7 +9,11 @@ use serde::{Deserialize, Serialize};
 use crate::engine::Backend;
 use crate::supervisor::{self, LaunchSpec};
 
+/// Tempo máximo da medição de cada motor.
 pub const LIMITE_POR_CANDIDATO: Duration = Duration::from_secs(30);
+/// Tempo para o motor subir com o modelo de teste (na primeira vez o driver
+/// pode compilar sombreadores — ex.: Vulkan/Mesa — e isso não conta na medição).
+pub const LIMITE_PARA_SUBIR: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BenchResult {
@@ -99,20 +103,20 @@ pub async fn bench_one(exe: &Path, variante: &str, backend: Backend, modelo: &Pa
         erro: None,
         duracao_ms: 0,
     };
-    let work = async {
-        let mut server = supervisor::start(&spec, client, LIMITE_POR_CANDIDATO).await.map_err(|e| e.to_string())?;
-        let r = measure(client, &server.base_url).await;
-        server.stop().await;
-        r
-    };
-    match tokio::time::timeout(LIMITE_POR_CANDIDATO, work).await {
-        Ok(Ok((p, g))) => {
-            result.ok = true;
-            result.leitura_tps = Some((p * 10.0).round() / 10.0);
-            result.geracao_tps = Some((g * 10.0).round() / 10.0);
+    match supervisor::start(&spec, client, LIMITE_PARA_SUBIR).await {
+        Err(e) => result.erro = Some(e.to_string()),
+        Ok(mut server) => {
+            match tokio::time::timeout(LIMITE_POR_CANDIDATO, measure(client, &server.base_url)).await {
+                Ok(Ok((p, g))) => {
+                    result.ok = true;
+                    result.leitura_tps = Some((p * 10.0).round() / 10.0);
+                    result.geracao_tps = Some((g * 10.0).round() / 10.0);
+                }
+                Ok(Err(e)) => result.erro = Some(e),
+                Err(_) => result.erro = Some("a medição passou de 30 segundos".into()),
+            }
+            server.stop().await;
         }
-        Ok(Err(e)) => result.erro = Some(e),
-        Err(_) => result.erro = Some("passou de 30 segundos".into()),
     }
     result.duracao_ms = started.elapsed().as_millis() as u64;
     tracing::info!("teste {variante}: {:?}", result);
