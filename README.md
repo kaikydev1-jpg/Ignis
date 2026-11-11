@@ -22,7 +22,11 @@ conferidos por SHA-256). Não recria motor de IA.
 - **Modelos:**
   - catálogo curto escolhido a dedo e filtrado pela sua placa ("Roda bem na sua placa");
   - download do Hugging Face com cancelar, retomar e conferência de hash;
-  - importação do Ollama, sem nunca apagar nada lá.
+  - importação do Ollama (opcional; o Ignis não precisa dele), sem nunca apagar nada lá.
+- **Qualquer modelo do Hugging Face:**
+  - busca dentro do app, com versões, tamanho e "cabe na sua placa?" (lendo o cabeçalho, sem baixar tudo);
+  - modelos em várias partes e modelos que entendem imagem/áudio (arquivo `mmproj`);
+  - modelos que pedem aceite dos termos usam a conta de cada pessoa (token guardado só no computador).
 - **Orçamento de memória:** escolhe quantas camadas vão para a placa e o tamanho do contexto pela VRAM livre, e avisa antes quando o modelo não cabe.
 - **Libera a placa:** descarrega o modelo depois de 10 min parado (configurável), para jogos e outros programas.
 - **API local** em `http://127.0.0.1:11470` (só no seu computador):
