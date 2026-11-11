@@ -3,6 +3,8 @@
 //! Tudo o que não é janela nem bandeja mora aqui, para poder ser testado sem
 //! interface gráfica e sem placa de vídeo.
 
+pub mod autostart;
+pub mod benchmark;
 pub mod budget;
 pub mod catalog;
 pub mod config;
@@ -15,6 +17,8 @@ pub mod gpu;
 pub mod models;
 pub mod ollama;
 pub mod paths;
+pub mod supervisor;
+pub mod updates;
 pub mod util;
 
 /// Instala o provedor de criptografia do rustls (ring) uma vez.
