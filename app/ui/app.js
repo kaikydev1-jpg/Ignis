@@ -49,7 +49,7 @@ function tamanho(b) {
   return gb >= 1 ? virgula(gb) + " GB" : Math.round(b / 1048576) + " MB";
 }
 const gbDeMb = (v) => (v == null ? "—" : v >= 1024 ? virgula(v / 1024) + " GB" : Math.round(v) + " MB");
-const tps = (v) => (v == null ? "—" : virgula(v));
+const tps = (v) => (v == null ? "—" : Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 const hora = (t) => (t ? new Date(t * 1000).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
 const horaCurta = (t) => new Date(t * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 function milhares(n) {

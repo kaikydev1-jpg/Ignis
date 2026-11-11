@@ -286,14 +286,14 @@ select { padding-right: 28px; }
 .fatos div dd { margin: 2px 0 0; font-weight: 600; }
 
 /* ---------- velocidade dos motores (calor = rapidez) ---------- */
-.vel { display: grid; grid-template-columns: 150px 1fr 120px; align-items: center; gap: 14px; padding: 13px 16px; border-top: 1px solid var(--linha); }
+.vel { display: grid; grid-template-columns: 150px 1fr 170px; align-items: center; gap: 14px; padding: 13px 16px; border-top: 1px solid var(--linha); }
 .vel:first-child { border-top: 0; }
 .vel .nome { font-weight: 600; }
 .vel .nome small { display: block; color: var(--fraco); font-weight: 400; font-size: 12.5px; }
 .trilho { height: 12px; border-radius: 6px; background: var(--mem-trilho); overflow: hidden; }
 .calor { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--calor-frio), var(--calor-quente)); }
 .vel .numero { text-align: right; font-weight: 700; font-size: 15px; }
-.vel .numero small { display: block; color: var(--fraco); font-weight: 400; font-size: 12px; }
+.vel .numero small { display: block; color: var(--fraco); font-weight: 400; font-size: 12px; white-space: nowrap; }
 .vel.falhou .nome, .vel.falhou .numero { color: var(--fraco); }
 .vel .erro-texto { color: var(--erro); font-size: 13px; }
 
