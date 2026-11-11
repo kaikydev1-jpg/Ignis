@@ -41,7 +41,7 @@ Instaladores: GitHub → Actions → workflow **Instaladores** (último commit) 
   - catálogo com filtros e mini-barras de memória;
   - status com velocidade e exemplos prontos (curl/Python/JS);
   - sem menu de botão direito, zoom ou seleção solta de página;
-  - **barra de título integrada** (como VS Code/Discord): sem a barra cinza do sistema; o topo do Ignis arrasta a janela, duplo clique maximiza, botões minimizar/maximizar/fechar no estilo do Windows 11, iguais no Windows e no Linux.
+  - **barra de título integrada** (como VS Code/Discord): sem a barra cinza do sistema; o topo do Ignis arrasta a janela, duplo clique maximiza, botões minimizar/maximizar/fechar no jeito de cada sistema (Windows 11; no Linux segue lado, ordem e estilo do sistema: bolinhas tipo Mac, GNOME ou KDE; escolha manual em Motor).
 - **Placa simulada** (`crates/fake-llama-server`) e testes de ponta a ponta.
 - **`ignis-cli`**: `detectar`, `servir`, `gguf`, `ollama`, `versao`.
 - **CI** (`.github/workflows/ci.yml`): fmt, clippy `-D warnings` e testes em Linux e Windows, incluindo o llama-server oficial com modelo de 0,5 B.
@@ -54,7 +54,7 @@ Instaladores: GitHub → Actions → workflow **Instaladores** (último commit) 
 ## Provas feitas (sem placa de vídeo)
 | O quê | Resultado |
 |---|---|
-| Testes automáticos | 106 passando (unidades, candidatos, detecção com fixtures, placa simulada, downloads/Ollama, Hugging Face com servidor imitando o site, llama-server oficial) |
+| Testes automáticos | 116 passando (unidades, candidatos, detecção com fixtures, placa simulada, downloads/Ollama, Hugging Face com servidor imitando o site, llama-server oficial) |
 | CI GitHub Linux **e Windows** | fmt, clippy e todos os testes passaram nos dois, inclusive o llama-server oficial rodando no Windows (resposta "Olá!", 44,8 tokens/s) |
 | Instaladores no CI | NSIS (Windows, com as DLLs do Visual C++), RPM (Fedora 44), .deb, AppImage e Flatpak gerados |
 | Hugging Face de verdade | busca, lista de versões e "ver se cabe" (lendo o cabeçalho real por Range) funcionaram pela janela |
@@ -68,7 +68,7 @@ Instaladores: GitHub → Actions → workflow **Instaladores** (último commit) 
 | Abrir com o computador | `.desktop` criado (binário, AppImage e Flatpak) |
 | Pacotes locais | .deb, .rpm, AppImage (runtime estático: dispensa libfuse2) e Flatpak (GNOME 51) gerados |
 | Recursos para apps (llama-server oficial + Qwen3 0.6B) | raciocínio separado em `reasoning_content`; `chat_template_kwargs.enable_thinking=false` desliga o pensamento; `tools` devolve `tool_calls`; pedido de 30 MB aceito (o Ignis agora aceita até 256 MB: fotos/áudio em base64) |
-| Barra integrada (app real, Xvfb + openbox) | sem barra do sistema; arrastar pela faixa de cima e pela marca, duplo clique maximiza e restaura, botão maximizar troca o ícone, redimensionar pelo canto, minimizar, fechar deixa o núcleo rodando; temas claro e escuro |
+| Barra integrada (app real, Xvfb + openbox) | sem barra do sistema; botões seguindo o sistema simulado (bolinhas à esquerda com layout `close,minimize,maximize:`, GNOME redondos, GNOME de fábrica só com fechar, KDE com setas, escolha manual Windows); arrastar pela faixa de cima e pela marca, duplo clique maximiza e restaura, botão maximizar troca o ícone, redimensionar pelo canto, minimizar, fechar deixa o núcleo rodando; temas claro e escuro |
 | Flatpak de verdade | instalou, rodou, leu a distro real do sistema (`/run/host`), gravou o autostart com `flatpak run` e rodou o llama-server oficial dentro do sandbox (41 tokens/s) |
 
 ## O que só a placa real prova
@@ -119,7 +119,7 @@ Está em **TESTE_DO_CRIADOR.md**:
 | Fixtures de placas | Montadas no formato exato das ferramentas, com IDs reais; **não capturadas** em placa real | Não há placa aqui; o TESTE_DO_CRIADOR pede as saídas reais |
 | Catálogo | 11 modelos fixados por revisão do Hugging Face + SHA-256, todos sem login | Curto e escolhido a dedo |
 | Visual | Fonte embutida + mesmas cores e componentes nos dois sistemas; destaque visual único na barra de memória da placa; "calor" (âmbar→brasa) só nas barras de velocidade | Pedido do criador: muito mais bonito, fácil e **igual** no Windows e no Linux |
-| Barra de título | **Integrada** (`decorations: false` + `shadow: true`; topo do app arrasta, botões próprios; arraste só começa ao mover o mouse para o duplo clique funcionar no Linux) | O criador mostrou que a barra do sistema (cinza, separada) é a "barra esquisita"; quer o topo embutido no app, igual em todos os sistemas |
+| Barra de título | **Integrada** (`decorations: false` + `shadow: true`; topo do app arrasta, botões próprios; arraste só começa ao mover o mouse para o duplo clique funcionar no Linux) | O criador mostrou que a barra do sistema (cinza, separada) é a "barra esquisita"; quer o topo embutido no app. Os botões seguem o sistema (o Linux dele usa bolinhas tipo Mac): lido de `gtk-decoration-layout` e do tema GTK, regra em `ignis_core::janela` |
 | Ollama | Opcional e discreto ("Mais opções"); o Ignis nunca precisa dele | O motor e os modelos são do próprio Ignis |
 | Modelos com termos | Conta da pessoa (token do Hugging Face), guardada só no computador (arquivo `hf-token`, permissão 600 no Linux) | Cada pessoa usa a própria conta; o token só vai ao huggingface.co |
 | Contexto padrão | 8.192 tokens (reduz sozinho se não couber; mínimo 2.048) | Bom para conversa e código numa placa de 8 GB |

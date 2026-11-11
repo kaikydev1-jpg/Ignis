@@ -135,7 +135,7 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `POST /motor/detectar` | Detecta a placa de novo |
 | `GET /motor/motores` | Candidatos (disponível/instalado/motivo/dica), ordem de uso, motor forçado |
 | `POST /motor/motores/forcar` `{"variante":"linux-vulkan"}` ou `{"variante":null}` | Força um motor (ou volta ao automático) |
-| `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes_sozinho`, `llama_server_proprio`, `modelo_padrao`) |
+| `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes_sozinho`, `llama_server_proprio`, `modelo_padrao`, `botoes_janela`: `auto`/`windows`/`gnome`/`kde`/`mac`) |
 | `GET /motor/atualizacoes`, `POST /motor/atualizacoes/procurar`, `POST /motor/atualizacoes/aplicar` `{"item":"motor"\|"catalogo"}` | Atualizações (nunca no meio de uma conversa) |
 | `GET /motor/hf/buscar?q=qwen3` | Busca qualquer modelo GGUF no Hugging Face (`repo`, `downloads`, `licenca`, `pede_aceite`, `multimodal`) |
 | `GET /motor/hf/repo?repo=dono/nome` | Versões (quantizações) de um repositório, com tamanho, partes, arquivo de visão/áudio (`mmproj`) e uma estimativa de "cabe na placa" |

@@ -31,7 +31,11 @@ extensão AppIndicator.
 
 ## 1. Ícone na bandeja e janela (Windows e Fedora)
 - **Sem a barra cinza do sistema:** o topo é do próprio Ignis, na mesma cor do app, com os botões minimizar, maximizar e fechar à direita.
-- O visual da janela deve ser **igual** nos dois sistemas: mesma fonte, cores, layout e botões.
+- O visual da janela deve ser **igual** nos dois sistemas (fonte, cores, layout). Só os botões da janela mudam para ficar no jeito de cada sistema:
+  - Windows: estilo Windows 11;
+  - Linux: segue o lado, a ordem e o estilo do seu sistema. Botões à esquerda ou tema estilo Mac → bolinhas coloridas no topo da lateral; GNOME → botões redondos; KDE → setas.
+  - Se não ficar igual ao do seu sistema: escolha em **Motor → Botões da janela** e me mande a saída de
+    `gsettings get org.gnome.desktop.wm.preferences button-layout` e `gsettings get org.gnome.desktop.interface gtk-theme`.
 - Teste da barra:
   - arrastar pelo topo (ou pelo logo) move a janela;
   - duplo clique no topo maximiza e outro duplo clique restaura;

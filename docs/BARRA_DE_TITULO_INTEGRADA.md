@@ -30,7 +30,12 @@ Visual:
 - Botões minimizar, maximizar/restaurar e fechar no canto superior direito, desenhados no estilo do Windows 11: 46 px de largura cada, ícones finos de 10 px, fundo leve ao passar o mouse e o fechar vermelho (#C42B1C) com X branco.
 - O botão maximizar vira "restaurar" (dois quadradinhos) quando a janela está maximizada.
 - Com a janela fora de foco, os ícones ficam mais apagados.
-- Igual no Windows e no Linux. No Mac: os três botões coloridos do sistema à esquerda, por cima do conteúdo.
+- Os botões seguem o sistema:
+  - Windows: estilo Windows 11, à direita;
+  - Mac: as três bolinhas coloridas à esquerda;
+  - Linux: leia o lado, a ordem e quais botões o sistema usa (configuração gtk-decoration-layout do GTK, que o GNOME e o KDE preenchem) e o tema. Botões à esquerda ou tema estilo Mac (WhiteSur, Mojave…) → bolinhas coloridas; GNOME → botões redondos do Adwaita; KDE → estilo Breeze. Se o GNOME mostra só o fechar, mostre só o fechar.
+  - Tenha uma opção nas configurações para escolher o estilo à mão (Automático, Windows, GNOME, KDE, Mac).
+- O resto do app é igual em todos os sistemas.
 
 Comportamento (tem que continuar igual a uma janela normal):
 - Arrastar pela faixa de cima (e por áreas vazias como o logo) move a janela.
@@ -69,6 +74,19 @@ Antes de entregar, teste: arrastar, duplo clique, maximizar e restaurar, minimiz
 - **Linux:** sem moldura do sistema não há sombra; um contorno de 1 px no
   conteúdo ajuda a separar a janela do fundo.
 - **Mac:** `"titleBarStyle": "Overlay"` e `"hiddenTitle": true`.
+
+### Seguir o estilo do Linux (o que o Ignis faz)
+- **Onde o sistema guarda isso:**
+  - GNOME: `gsettings get org.gnome.desktop.wm.preferences button-layout`
+    (ex.: `appmenu:close`, ou `close,minimize,maximize:` com os botões à esquerda);
+  - KDE: `ButtonsOnLeft`/`ButtonsOnRight` no `kwinrc`, que o KDE copia para o GTK.
+- **Como ler de dentro do app:** pela configuração `gtk-decoration-layout` do
+  GTK. Ela já junta o GNOME, o KDE e o portal do Flatpak.
+- **No Tauri** (Linux, na thread principal):
+  `gtk::Settings::default()` e depois
+  `property::<Option<String>>("gtk-decoration-layout")` e `"gtk-theme-name"`.
+- **Regra completa e testes:** `crates/ignis-core/src/janela.rs`. Os desenhos
+  de cada estilo estão em `app/ui/app.js` e `app/ui/style.css`.
 
 ### Electron
 - `titleBarStyle: 'hidden'` com
