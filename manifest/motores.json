@@ -36,7 +36,8 @@
       "libs_do_sistema": [
         "libvulkan.so.1"
       ],
-      "dica_falta": "Instale o Vulkan do sistema. No Fedora: sudo dnf install vulkan-loader mesa-vulkan-drivers"
+      "dica_falta": "Falta o Vulkan do sistema (Mesa).",
+      "pacotes": "vulkan"
     },
     {
       "id": "linux-rocm",
@@ -80,7 +81,8 @@
         "gfx1200",
         "gfx1201"
       ],
-      "dica_falta": "Instale o ROCm dos repositórios do Fedora: sudo dnf install rocm-hip hipblas rocblas  — e coloque seu usuário nos grupos render e video (sudo usermod -aG render,video $USER), depois reinicie a sessão."
+      "dica_falta": "Falta o ROCm do sistema (bibliotecas HIP, rocBLAS e hipBLAS).",
+      "pacotes": "rocm"
     },
     {
       "id": "linux-cuda-12",
