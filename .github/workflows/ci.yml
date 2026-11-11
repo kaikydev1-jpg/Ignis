@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  LLAMA_VERSAO: b12271
+  # modelo pequeno (~0,5 B) usado nos testes de integração
+  MODELO_URL: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf
+  MODELO_SHA256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+
+jobs:
+  testes:
+    name: Testes (${{ matrix.nome }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nome: Linux
+            os: ubuntu-24.04
+            pacote: llama-b12271-bin-ubuntu-x64.tar.gz
+            pacote_sha256: bc5b68b34bbca5b0c4d17cf162f3d699ee278e275f1afb2b09c9e0cefe41239f
+          - nome: Windows
+            os: windows-latest
+            pacote: llama-b12271-bin-win-cpu-x64.zip
+            pacote_sha256: 572180551df20b0e724a7d8bf927f8e6880d02cc47670900c06b2b99e881ad61
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Dependências do sistema (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+
+      - name: DLLs do Visual C++ para o instalador (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/copiar-vcrt.ps1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatação
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Cache do motor oficial e do modelo de teste
+        uses: actions/cache@v4
+        with:
+          path: testes-dados
+          key: testes-dados-${{ matrix.pacote }}-${{ env.MODELO_SHA256 }}
+
+      - name: Baixar motor oficial (processador) e modelo pequeno
+        shell: bash
+        run: |
+          mkdir -p testes-dados
+          cd testes-dados
+          [ -f "${{ matrix.pacote }}" ] || curl -fsSL --retry 3 -o "${{ matrix.pacote }}" "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_VERSAO}/${{ matrix.pacote }}"
+          [ -f modelo.gguf ] || curl -fsSL --retry 3 -o modelo.gguf "$MODELO_URL"
+          echo "${{ matrix.pacote_sha256 }}  ${{ matrix.pacote }}" | sha256sum -c -
+          echo "${MODELO_SHA256}  modelo.gguf" | sha256sum -c -
+
+      - name: Testes (unidades, placa simulada e llama-server oficial)
+        shell: bash
+        env:
+          IGNIS_TEST_ENGINE_ARCHIVE: ${{ github.workspace }}/testes-dados/${{ matrix.pacote }}
+          IGNIS_TEST_MODEL: ${{ github.workspace }}/testes-dados/modelo.gguf
+          RUST_BACKTRACE: "1"
+        run: cargo test --workspace -- --nocapture

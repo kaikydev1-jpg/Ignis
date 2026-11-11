@@ -1,0 +1,186 @@
+name: Instaladores
+
+# Gera os instaladores a cada versão (tag v*), a cada push (para conferir) e
+# quando pedido à mão. GERAR NÃO É PUBLICAR: a publicação só acontece quando o
+# criador roda este workflow à mão com "publicar = sim" — e mesmo assim como
+# RASCUNHO de release, que ele revisa e publica no GitHub.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: "Criar um RASCUNHO de release com os instaladores? (sim/nao)"
+        required: true
+        default: "nao"
+
+concurrency:
+  group: instaladores-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  TAURI_CLI: "@tauri-apps/cli@2"
+
+jobs:
+  windows:
+    name: Windows (NSIS, por usuário)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: DLLs do Visual C++ (vão junto no instalador)
+        shell: pwsh
+        run: ./scripts/copiar-vcrt.ps1
+      - name: Gerar instalador
+        working-directory: app/src-tauri
+        run: npx --yes ${{ env.TAURI_CLI }} build --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ignis-windows
+          path: target/release/bundle/nsis/*.exe
+          retention-days: 14
+
+  linux:
+    name: Linux (.deb e AppImage)
+    # Ubuntu 22.04: glibc mais antiga = roda em mais distros
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dependências
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev file
+      - name: Gerar .deb e AppImage
+        working-directory: app/src-tauri
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NO_STRIP: "true"
+        run: npx --yes ${{ env.TAURI_CLI }} build --bundles deb,appimage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ignis-linux
+          path: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+          retention-days: 14
+
+  rpm-fedora:
+    name: Fedora 44 (RPM)
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 60
+    steps:
+      - name: Ferramentas e dependências do Fedora
+        run: |
+          dnf install -y git gcc gcc-c++ make curl file nodejs npm rpm-build \
+            webkit2gtk4.1-devel libayatana-appindicator-gtk3-devel librsvg2-devel openssl-devel libxdo-devel
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@v2
+      - name: Gerar RPM
+        working-directory: app/src-tauri
+        run: npx --yes ${{ env.TAURI_CLI }} build --bundles rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ignis-fedora
+          path: target/release/bundle/rpm/*.rpm
+          retention-days: 14
+
+  flatpak:
+    name: Flatpak (Fedora Atomic e outras distros)
+    needs: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ignis-linux
+          path: pacotes
+      - name: flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          # o Ubuntu 24.04 bloqueia namespaces de usuário (usados pelo sandbox do flatpak-builder)
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Gerar Flatpak
+        run: |
+          DEB=$(ls pacotes/deb/*.deb | head -1)
+          ./packaging/flatpak/build.sh "$DEB" "$PWD/Ignis.flatpak"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ignis-flatpak
+          path: Ignis.flatpak
+          retention-days: 14
+
+  manifesto:
+    name: Manifesto de atualizações
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gerar atualizacoes.json
+        run: |
+          VERSAO=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          python3 scripts/gerar_atualizacoes.py "$VERSAO" atualizacoes.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ignis-atualizacoes
+          path: atualizacoes.json
+          retention-days: 14
+
+  rascunho:
+    name: Rascunho de release (só a pedido)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publicar == 'sim'
+    needs: [windows, linux, rpm-fedora, flatpak, manifesto]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: saida
+          merge-multiple: true
+      - name: Versão e somas SHA-256
+        id: v
+        run: |
+          echo "versao=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+          cd saida
+          find . -type f \( -name '*.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' -o -name '*.flatpak' -o -name '*.json' \) -print0 \
+            | xargs -0 sha256sum | sed 's#  \./#  #' > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Criar rascunho
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: v${{ steps.v.outputs.versao }}
+          name: Ignis ${{ steps.v.outputs.versao }}
+          body: |
+            Rascunho gerado pelo CI. Revise e publique à mão.
+            Instaladores: Windows (NSIS por usuário), Fedora 44 (RPM), Flatpak, AppImage e .deb.
+          files: |
+            saida/**/*.exe
+            saida/**/*.deb
+            saida/**/*.rpm
+            saida/**/*.AppImage
+            saida/**/*.flatpak
+            saida/**/atualizacoes.json
+            saida/SHA256SUMS.txt

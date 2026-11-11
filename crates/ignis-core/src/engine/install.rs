@@ -43,6 +43,9 @@ pub enum InstallError {
 pub struct EngineStore {
     root: PathBuf,
     downloads: PathBuf,
+    /// Arquivos que vão junto em toda pasta de motor (no Windows: as DLLs do
+    /// Visual C++ que o llama-server oficial precisa e que nem todo PC tem).
+    extras: Option<PathBuf>,
 }
 
 pub fn server_exe_name() -> &'static str {
@@ -55,7 +58,27 @@ pub fn server_exe_name() -> &'static str {
 
 impl EngineStore {
     pub fn new(root: PathBuf, downloads: PathBuf) -> Self {
-        Self { root, downloads }
+        Self { root, downloads, extras: None }
+    }
+
+    /// Define a pasta de arquivos extras copiados para cada motor.
+    pub fn with_extras(mut self, extras: Option<PathBuf>) -> Self {
+        self.extras = extras.filter(|p| p.is_dir());
+        self
+    }
+
+    /// Copia os extras que faltarem para a pasta do motor.
+    pub fn apply_extras(&self, dir: &Path) {
+        let Some(src) = &self.extras else { return };
+        let Ok(rd) = std::fs::read_dir(src) else { return };
+        for e in rd.flatten() {
+            let dest = dir.join(e.file_name());
+            if e.path().is_file() && !dest.exists() {
+                if let Err(err) = std::fs::copy(e.path(), &dest) {
+                    tracing::warn!("não copiei {}: {err}", dest.display());
+                }
+            }
+        }
     }
 
     pub fn variant_dir(&self, versao: &str, variante: &str) -> PathBuf {
@@ -71,6 +94,9 @@ impl EngineStore {
             return None;
         }
         let exe = dir.join(&marker.executavel);
+        if exe.is_file() {
+            self.apply_extras(&dir);
+        }
         exe.is_file().then(|| InstalledEngine { versao: m.llama_cpp.versao.clone(), variante: v.id.clone(), pasta: dir, executavel: exe })
     }
 
@@ -327,6 +353,25 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<(), InstallError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extras_vao_para_a_pasta_do_motor() {
+        let tmp = tempfile::tempdir().unwrap();
+        let extras = tmp.path().join("vcrt");
+        std::fs::create_dir_all(&extras).unwrap();
+        std::fs::write(extras.join("vcruntime140.dll"), b"dll").unwrap();
+        let motor = tmp.path().join("motor");
+        std::fs::create_dir_all(&motor).unwrap();
+        std::fs::write(motor.join("msvcp140.dll"), b"ja-existia").unwrap();
+        std::fs::write(extras.join("msvcp140.dll"), b"nova").unwrap();
+        let store = EngineStore::new(tmp.path().join("m"), tmp.path().join("d")).with_extras(Some(extras));
+        store.apply_extras(&motor);
+        assert_eq!(std::fs::read(motor.join("vcruntime140.dll")).unwrap(), b"dll");
+        assert_eq!(std::fs::read(motor.join("msvcp140.dll")).unwrap(), b"ja-existia", "não sobrescreve");
+        // pasta de extras inexistente é ignorada
+        let s2 = EngineStore::new(tmp.path().join("m"), tmp.path().join("d")).with_extras(Some(tmp.path().join("nao-existe")));
+        s2.apply_extras(&motor);
+    }
 
     #[test]
     fn caminhos_seguros() {

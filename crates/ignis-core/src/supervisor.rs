@@ -145,9 +145,11 @@ pub fn classify_failure(log: &[String], exit_code: Option<i32>) -> String {
     if has(&["hiperrornobinaryforgpu", "no kernel image is available", "invalid device function", "unsupported gpu", "no compatible gpu"]) {
         return "Este motor não tem suporte para a sua placa.".into();
     }
-    if has(&["error while loading shared libraries", "cannot open shared object", "could not load library"])
-        || exit_code == Some(-1073741515)
-    {
+    if exit_code == Some(-1073741515) {
+        // 0xC0000135: DLL não encontrada (Windows)
+        return "Faltam bibliotecas do Windows (Visual C++) para o motor. Reinstale o Ignis ou instale o \"Microsoft Visual C++ Redistributable 2015-2022 (x64)\".".into();
+    }
+    if has(&["error while loading shared libraries", "cannot open shared object", "could not load library"]) {
         return "Faltam bibliotecas do sistema para este motor (driver desatualizado ou incompleto).".into();
     }
     if has(&["unknown model architecture", "unknown architecture", "unsupported model architecture"]) {
@@ -325,6 +327,7 @@ mod tests {
             .contains("não reconhece"));
         assert!(classify_failure(&l("gguf_init_from_file: invalid magic characters"), Some(1)).contains("corrompido"));
         assert!(classify_failure(&l("nada útil"), Some(3)).contains("código 3"));
+        assert!(classify_failure(&[], Some(-1073741515)).contains("Visual C++"));
     }
 
     #[test]

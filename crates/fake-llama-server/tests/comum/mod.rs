@@ -131,6 +131,7 @@ pub fn ambiente(op: Opcoes) -> Ambiente {
             catalog_override: op.catalog,
             manifest_override: Some(manifest),
             auto_teste: false,
+            extras_motor: None,
         },
     );
     Ambiente { dir, motor, paths }

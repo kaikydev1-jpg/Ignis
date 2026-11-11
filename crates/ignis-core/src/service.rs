@@ -167,6 +167,8 @@ pub struct MotorOptions {
     pub manifest_override: Option<EngineManifest>,
     /// Testar a velocidade sozinho quando a placa/driver mudar (desligado nos testes).
     pub auto_teste: bool,
+    /// Arquivos copiados para cada pasta de motor (Windows: DLLs do Visual C++).
+    pub extras_motor: Option<PathBuf>,
 }
 
 impl Default for MotorOptions {
@@ -179,6 +181,7 @@ impl Default for MotorOptions {
             catalog_override: None,
             manifest_override: None,
             auto_teste: true,
+            extras_motor: None,
         }
     }
 }
@@ -267,7 +270,7 @@ impl Motor {
         let (porta_tx, _) = watch::channel(settings.porta);
         let (mudancas, _) = watch::channel(0);
         Arc::new(Self {
-            store: EngineStore::new(paths.engines_dir(), paths.downloads_dir()),
+            store: EngineStore::new(paths.engines_dir(), paths.downloads_dir()).with_extras(opts.extras_motor),
             http: download::http_client(),
             local: supervisor::local_client(),
             settings: RwLock::new(settings.clone()),

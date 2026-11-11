@@ -263,7 +263,8 @@ mod nucleo {
         let app = tauri::Builder::default()
             .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| abrir_janela(app)))
             .setup(move |app| {
-                let motor = Motor::new(paths.clone(), MotorOptions::default());
+                let extras = app.path().resource_dir().ok().map(|d| d.join("vcrt")).filter(|d| d.is_dir());
+                let motor = Motor::new(paths.clone(), MotorOptions { extras_motor: extras, ..Default::default() });
                 app.manage(Estado {
                     motor: motor.clone(),
                     janela: Mutex::new(None),
