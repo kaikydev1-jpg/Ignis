@@ -3,8 +3,9 @@
 > Toda retomada começa por aqui. Atualizado antes de cada pausa.
 
 ## Situação
-**Construção completa; aguardando o CI do último envio** (veja "Próxima ação").
-Depois disso: **pronto para testar** na placa real (TESTE_DO_CRIADOR.md).
+**PRONTO PARA TESTAR** na placa real: siga o TESTE_DO_CRIADOR.md.
+Instaladores: GitHub → Actions → workflow **Instaladores** (último commit) → artefatos
+`ignis-windows`, `ignis-fedora`, `ignis-flatpak`, `ignis-linux` (.deb e AppImage), `ignis-atualizacoes`.
 
 ## O que está pronto
 - **Núcleo** (`crates/ignis-core`):
@@ -78,8 +79,10 @@ Está em **TESTE_DO_CRIADOR.md**:
 - capturar saídas reais de vulkaninfo/rocminfo/nvidia-smi para trocar as fixtures.
 
 ## Próxima ação exata
-1. Conferir o resultado do CI e dos Instaladores no GitHub Actions para o último commit. Se algo falhar no Windows, corrigir pelos logs.
-2. Quando tudo estiver verde, marcar "pronto para testar" aqui e avisar o criador.
+1. O criador roda o TESTE_DO_CRIADOR.md nas máquinas reais e manda o resultado (e o "Copiar relatório" onde algo der diferente).
+2. Trocar as fixtures de detecção pelas saídas reais capturadas (vulkaninfo/rocminfo/nvidia-smi).
+3. Quando o chat do Azura Voice disser o que falta no motor, atualizar o Ignis.
+4. Publicar: rodar o workflow **Instaladores** à mão com "publicar = sim" (cria um rascunho de release para revisar).
 
 ## Pendente com o criador
 - **Azura Voice** (app do criador): vai se conectar ao Ignis pela API (CONTRATO_VALKODE.md serve para qualquer app). Aguardando a lista do que falta no motor, vinda do chat que criou o Azura Voice, para atualizar o Ignis.
