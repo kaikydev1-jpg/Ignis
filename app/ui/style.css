@@ -101,10 +101,34 @@ img { -webkit-user-drag: none; }
 
 :focus-visible { outline: 2px solid var(--brasa); outline-offset: 2px; border-radius: 6px; }
 
-.app { display: grid; grid-template-columns: 212px 1fr; height: 100vh; }
+.app { display: grid; grid-template-columns: 212px 1fr; grid-template-rows: 40px 1fr; height: 100vh; }
+
+/* ---------- barra de título integrada (igual no Windows e no Linux) ---------- */
+.barra-janela { grid-column: 2; grid-row: 1; display: flex; justify-content: flex-end; user-select: none; }
+.controles-janela { display: flex; }
+.controles-janela[hidden] { display: none; }
+.controles-janela button {
+  width: 46px; height: 100%; padding: 0; border: 0; background: transparent;
+  color: var(--texto); display: grid; place-items: center; cursor: default;
+  transition: background-color 0.1s, color 0.1s;
+}
+.controles-janela svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; overflow: visible; }
+.controles-janela button:hover { background: color-mix(in srgb, var(--texto) 9%, transparent); }
+.controles-janela button:active { background: color-mix(in srgb, var(--texto) 5%, transparent); }
+.controles-janela .fechar-janela:hover { background: #c42b1c; color: #fff; }
+.controles-janela .fechar-janela:active { background: #c84031; color: #fff; }
+#jan-max .i-rest { display: none; }
+html[data-maximizada] #jan-max .i-max { display: none; }
+html[data-maximizada] #jan-max .i-rest { display: block; }
+html[data-inativa] .controles-janela button:not(:hover) { color: var(--fraco); }
+/* No Linux a janela sem moldura do sistema ganha um contorno fino (no Windows a sombra é do sistema). */
+html[data-so="linux"]:not([data-maximizada]) .app::after {
+  content: ""; position: fixed; inset: 0; border: 1px solid var(--linha-forte); pointer-events: none; z-index: 1000;
+}
 
 /* ---------- lateral ---------- */
 .lateral {
+  grid-row: 1 / 3;
   background: var(--lateral);
   border-right: 1px solid var(--linha);
   display: flex; flex-direction: column;
@@ -136,7 +160,7 @@ img { -webkit-user-drag: none; }
 @keyframes pulsar { 50% { opacity: 0.35; } }
 
 /* ---------- conteúdo ---------- */
-main { overflow-y: auto; padding: 26px 34px 40px; }
+main { grid-column: 2; grid-row: 2; overflow-y: auto; padding: 6px 34px 40px; }
 main > * { max-width: 900px; }
 .cabecalho { margin: 0 0 18px; }
 .cabecalho h1 { font-size: 24px; line-height: 1.2; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.015em; }

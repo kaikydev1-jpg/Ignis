@@ -382,6 +382,11 @@ mod janela {
                     .title(APP_NAME)
                     .inner_size(1000.0, 720.0)
                     .min_inner_size(760.0, 520.0)
+                    // Barra de título integrada: o topo do próprio Ignis faz o papel
+                    // da barra (arrastar, duplo clique, botões). No Windows a sombra
+                    // e os cantos arredondados continuam sendo do sistema.
+                    .decorations(false)
+                    .shadow(true)
                     .center()
                     .build()?;
                 let _ = w.set_focus();

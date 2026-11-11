@@ -30,8 +30,15 @@ extensão AppIndicator.
 - KDE (Kinoite, Bazzite KDE) já mostra o ícone sem extensão.
 
 ## 1. Ícone na bandeja e janela (Windows e Fedora)
-- A barra de título deve ser a **nativa do sistema** (a mesma de qualquer outro aplicativo do Windows ou do GNOME/KDE), clara ou escura conforme o sistema.
-- O visual da janela deve ser **igual** nos dois sistemas: mesma fonte, cores e layout.
+- **Sem a barra cinza do sistema:** o topo é do próprio Ignis, na mesma cor do app, com os botões minimizar, maximizar e fechar à direita.
+- O visual da janela deve ser **igual** nos dois sistemas: mesma fonte, cores, layout e botões.
+- Teste da barra:
+  - arrastar pelo topo (ou pelo logo) move a janela;
+  - duplo clique no topo maximiza e outro duplo clique restaura;
+  - o botão do meio vira "restaurar" (dois quadradinhos) quando maximizada;
+  - passar o mouse no X deixa ele vermelho;
+  - as bordas e os cantos redimensionam;
+  - no Windows 11: cantos arredondados, sombra, e arrastar até a borda da tela encaixa a janela (Aero Snap).
 
 1. Abra o Ignis.
    - **Esperado:** ícone de chama perto do relógio e a janela aberta.

@@ -26,6 +26,60 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 document.addEventListener("dragstart", (e) => { if (!e.target.closest("input, textarea")) e.preventDefault(); });
 
+// ---------- barra de título integrada ----------
+// A janela não usa a barra do sistema: o topo do próprio Ignis arrasta a
+// janela (duplo clique maximiza) e tem os botões minimizar, maximizar e fechar.
+document.documentElement.dataset.so = /windows/i.test(navigator.userAgent) ? "windows" : /mac os/i.test(navigator.userAgent) ? "mac" : "linux";
+(function barraDeTitulo() {
+  const w = window.__TAURI__ && window.__TAURI__.window && window.__TAURI__.window.getCurrentWindow();
+  if (!w) return; // fora do Tauri (navegador) não há janela para controlar
+  const raiz = document.documentElement;
+  $("controles-janela").hidden = false;
+  $("jan-min").addEventListener("click", () => w.minimize());
+  $("jan-max").addEventListener("click", () => w.toggleMaximize());
+  $("jan-fechar").addEventListener("click", () => w.close());
+  const marcar = async () => {
+    const max = await w.isMaximized().catch(() => false);
+    raiz.toggleAttribute("data-maximizada", max);
+    const nome = max ? "Restaurar" : "Maximizar";
+    $("jan-max").title = nome;
+    $("jan-max").setAttribute("aria-label", nome);
+  };
+  marcar();
+  w.onResized(marcar);
+
+  // Arrastar e duplo clique. Áreas com data-arrastar (só o próprio elemento) ou
+  // data-arrastar="tudo" (também o que está dentro); botões e campos não arrastam.
+  // O arraste só começa quando o mouse se mexe com o botão apertado: assim o
+  // segundo clique de um duplo clique não se perde (no Linux, começar a arrastar
+  // no primeiro clique entrega o mouse ao sistema e o duplo clique não chega).
+  const clicavel = "a, button, input, select, textarea, label, summary, [contenteditable], [role=button], [role=tab], [tabindex]:not([tabindex='-1'])";
+  const podeArrastar = (alvo) => {
+    if (!(alvo instanceof Element) || alvo.closest(clicavel)) return false;
+    const area = alvo.closest("[data-arrastar]");
+    return !!area && (area === alvo || area.dataset.arrastar === "tudo");
+  };
+  let inicio = null;
+  document.addEventListener("mousedown", (e) => {
+    inicio = null;
+    if (e.button !== 0 || !podeArrastar(e.target)) return;
+    e.preventDefault(); // sem seleção de texto
+    if (e.detail === 2) w.toggleMaximize();
+    else inicio = { x: e.screenX, y: e.screenY };
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!inicio) return;
+    if (!(e.buttons & 1)) { inicio = null; return; }
+    if (Math.abs(e.screenX - inicio.x) + Math.abs(e.screenY - inicio.y) >= 3) {
+      inicio = null;
+      w.startDragging();
+    }
+  });
+  document.addEventListener("mouseup", () => { inicio = null; });
+  window.addEventListener("blur", () => raiz.toggleAttribute("data-inativa", true));
+  window.addEventListener("focus", () => raiz.toggleAttribute("data-inativa", false));
+})();
+
 // ---------- utilidades ----------
 async function api(method, path, body) {
   let status, corpo;
