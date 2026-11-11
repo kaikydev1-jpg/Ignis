@@ -18,6 +18,8 @@ pub enum Origem {
     OllamaCopia { referencia: String },
     /// Arquivo GGUF indicado pela pessoa (lido no lugar).
     Arquivo,
+    /// Baixado de um repositório qualquer do Hugging Face.
+    HuggingFace { repo: String, arquivo: String, revisao: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,6 +35,12 @@ pub struct InstalledModel {
     pub instalado_em: u64,
     #[serde(default)]
     pub licenca: Option<String>,
+    /// Demais partes de um modelo dividido (a primeira é `arquivo`).
+    #[serde(default)]
+    pub partes: Vec<PathBuf>,
+    /// Arquivo de visão/áudio (mmproj), se houver.
+    #[serde(default)]
+    pub mmproj: Option<PathBuf>,
 }
 
 impl InstalledModel {
@@ -72,6 +80,8 @@ impl InstalledModel {
             sha256,
             origem,
             instalado_em: crate::util::now_unix(),
+            partes: Vec::new(),
+            mmproj: None,
         })
     }
 }
@@ -116,10 +126,12 @@ impl Registry {
     pub fn remove(&mut self, id: &str, models_dir: &Path) -> std::io::Result<Option<RemoveOutcome>> {
         let Some(m) = self.get(id).cloned() else { return Ok(None) };
         let outcome = if is_inside(&m.arquivo, models_dir) && !matches!(m.origem, Origem::OllamaReferencia { .. } | Origem::Arquivo) {
-            if m.arquivo.exists() {
-                std::fs::remove_file(&m.arquivo)?;
+            for f in std::iter::once(&m.arquivo).chain(m.partes.iter()).chain(m.mmproj.iter()) {
+                if f.exists() && is_inside(f, models_dir) {
+                    std::fs::remove_file(f)?;
+                }
+                crate::download::remove_partial(f);
             }
-            crate::download::remove_partial(&m.arquivo);
             RemoveOutcome::Apagado
         } else {
             RemoveOutcome::SoDaLista

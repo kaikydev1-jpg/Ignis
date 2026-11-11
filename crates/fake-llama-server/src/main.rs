@@ -55,6 +55,7 @@ struct App {
     pronto_em: Instant,
     alias: String,
     embeddings: bool,
+    mmproj: bool,
     tokens: AtomicU64,
 }
 
@@ -92,6 +93,13 @@ async fn main() {
         eprintln!("main: error: failed to load model '{model}'");
         std::process::exit(1);
     }
+    let mmproj = arg(&args, &["--mmproj", "-mm"]);
+    if let Some(mm) = &mmproj {
+        if !std::path::Path::new(mm).is_file() {
+            eprintln!("clip_init: failed to load mmproj {mm}");
+            std::process::exit(1);
+        }
+    }
     let port: u16 = arg(&args, &["--port"]).and_then(|p| p.parse().ok()).unwrap_or(9931);
     let alias = arg(&args, &["-a", "--alias"]).unwrap_or_else(|| "modelo".into());
     let embeddings = args.iter().any(|a| a == "--embeddings" || a == "--embedding");
@@ -102,6 +110,7 @@ async fn main() {
         cfg: cfg.clone(),
         alias,
         embeddings,
+        mmproj: mmproj.is_some(),
         tokens: AtomicU64::new(0),
     });
     if cfg.modo == "cai_depois" {
@@ -133,7 +142,7 @@ async fn health(State(app): State<Arc<App>>) -> Response {
 }
 
 async fn models(State(app): State<Arc<App>>) -> Json<Value> {
-    Json(json!({"object": "list", "data": [{"id": app.alias, "object": "model", "owned_by": "llamacpp"}]}))
+    Json(json!({"object": "list", "data": [{"id": app.alias, "object": "model", "owned_by": "llamacpp", "mmproj": app.mmproj}]}))
 }
 
 fn timings(app: &App, prompt_n: u64, gen_n: u64) -> Value {

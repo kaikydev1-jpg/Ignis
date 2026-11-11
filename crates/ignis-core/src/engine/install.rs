@@ -122,7 +122,7 @@ impl EngineStore {
             if !dest.exists() || std::fs::metadata(&dest).map(|md| md.len()).unwrap_or(0) != a.tamanho {
                 let base = done_before;
                 let cb = move |p: Progress| progress(Progress { baixado: base + p.baixado, total: Some(total) });
-                download::download_file(client, &m.url(a), &dest, Some(&a.sha256), Some(a.tamanho), cancel, &cb).await?;
+                download::download_file(client, &m.url(a), &dest, Some(&a.sha256), Some(a.tamanho), cancel, &cb, None).await?;
             } else {
                 // arquivo já baixado: confere de novo antes de usar
                 let d2 = dest.clone();

@@ -220,6 +220,8 @@ pub struct Motor {
     background: AtomicBool,
     bench_running: AtomicBool,
     auto_teste: bool,
+    hf_token: RwLock<Option<String>>,
+    hf_nome: RwLock<Option<String>>,
     pub shutdown: CancellationToken,
 }
 
@@ -302,6 +304,8 @@ impl Motor {
             background: AtomicBool::new(false),
             bench_running: AtomicBool::new(false),
             auto_teste: opts.auto_teste,
+            hf_token: RwLock::new(crate::hub::load_token(&paths.config_dir)),
+            hf_nome: RwLock::new(None),
             shutdown: CancellationToken::new(),
             paths,
         })
@@ -713,6 +717,7 @@ impl Motor {
                     backend: cand.backend,
                     variante: cand.variante.clone(),
                     args_extras: vec![],
+                    mmproj: model.mmproj.clone().filter(|p| p.is_file()),
                 };
                 match supervisor::start(&spec, &self.local, self.load_timeout).await {
                     Ok(server) => {
@@ -985,7 +990,9 @@ impl Motor {
     ) -> Result<(), DownloadError> {
         let dest = self.paths.models_dir().join(&m.arquivo);
         let cb = |p: Progress| self.task_progress(tid, p);
-        download::download_file(&self.http, &m.download_url(), &dest, Some(&m.sha256), Some(m.tamanho), cancel, &cb).await?;
+        let token = self.hf_token();
+        download::download_file(&self.http, &m.download_url(), &dest, Some(&m.sha256), Some(m.tamanho), cancel, &cb, token.as_deref())
+            .await?;
         let mut im = InstalledModel::from_file(
             m.id.clone(),
             Some(m.nome.clone()),
@@ -1010,6 +1017,29 @@ impl Motor {
         let msg = match r {
             Some(RemoveOutcome::Apagado) => "Modelo apagado do disco.".to_string(),
             Some(RemoveOutcome::SoDaLista) => "Modelo tirado da lista (o arquivo original foi mantido).".to_string(),
+            None if id.starts_with("hf:") => {
+                // download incompleto de um repositório do Hugging Face
+                self.cancel_task(id);
+                let resto = &id[3..];
+                let mut it = resto.splitn(3, '/');
+                let (Some(dono), Some(nome), Some(arquivo)) = (it.next(), it.next(), it.next()) else {
+                    return Err(MotorError::ModeloNaoEncontrado(id.into()));
+                };
+                let pasta = self.paths.models_dir().join("hf").join(format!("{dono}__{nome}"));
+                let base = arquivo.rsplit('/').next().unwrap_or(arquivo).trim_end_matches(".gguf").to_string();
+                let prefixo = crate::util::safe_file_name(&base);
+                let prefixo = prefixo.split("-00001-of-").next().unwrap_or(&prefixo).to_string();
+                if let Ok(rd) = std::fs::read_dir(&pasta) {
+                    for e in rd.flatten() {
+                        let n = e.file_name().to_string_lossy().into_owned();
+                        if n.starts_with(&prefixo) && n.ends_with(".part") {
+                            let _ = std::fs::remove_file(e.path());
+                        }
+                    }
+                }
+                self.tarefas.lock().unwrap().remove(id);
+                "Download incompleto apagado.".to_string()
+            }
             None => {
                 // download incompleto do catálogo?
                 let cat = self.catalog();
@@ -1027,6 +1057,173 @@ impl Motor {
         }
         self.bump();
         Ok(msg)
+    }
+
+    // ---------- Hugging Face: qualquer modelo ----------
+
+    pub fn hf_token(&self) -> Option<String> {
+        self.hf_token.read().unwrap().clone()
+    }
+
+    pub fn hf_conta(&self) -> Value {
+        json!({"configurado": self.hf_token().is_some(), "nome": *self.hf_nome.read().unwrap()})
+    }
+
+    /// Salva (ou remove, com texto vazio) o token da pessoa, conferindo antes.
+    pub async fn set_hf_token(&self, token: &str) -> Result<Value, MotorError> {
+        let t = token.trim();
+        if t.is_empty() {
+            crate::hub::save_token(&self.paths.config_dir, None).map_err(|e| MotorError::Falhou(e.to_string()))?;
+            *self.hf_token.write().unwrap() = None;
+            *self.hf_nome.write().unwrap() = None;
+            self.bump();
+            return Ok(self.hf_conta());
+        }
+        let nome = crate::hub::whoami(&self.http, t).await.map_err(|e| MotorError::Invalido(e.to_string()))?;
+        crate::hub::save_token(&self.paths.config_dir, Some(t)).map_err(|e| MotorError::Falhou(e.to_string()))?;
+        *self.hf_token.write().unwrap() = Some(t.to_string());
+        *self.hf_nome.write().unwrap() = Some(nome.clone());
+        self.aviso("info", format!("Conta do Hugging Face conectada ({nome})."));
+        Ok(self.hf_conta())
+    }
+
+    fn hub_err(e: crate::hub::HubError) -> MotorError {
+        match e {
+            crate::hub::HubError::NaoEncontrado => MotorError::ModeloNaoEncontrado("(Hugging Face)".into()),
+            crate::hub::HubError::PedeAceite { .. } | crate::hub::HubError::TokenRecusado => MotorError::Invalido(e.to_string()),
+            other => MotorError::Falhou(other.to_string()),
+        }
+    }
+
+    pub async fn hub_search(&self, q: &str) -> Result<Vec<crate::hub::HubModel>, MotorError> {
+        if q.trim().len() < 2 {
+            return Err(MotorError::Invalido("Escreva pelo menos 2 letras para buscar.".into()));
+        }
+        crate::hub::search(&self.http, self.hf_token().as_deref(), q, 30).await.map_err(Self::hub_err)
+    }
+
+    pub async fn hub_repo(&self, repo: &str) -> Result<crate::hub::HubRepo, MotorError> {
+        crate::hub::files(&self.http, self.hf_token().as_deref(), repo).await.map_err(Self::hub_err)
+    }
+
+    /// Lê o cabeçalho do arquivo no Hugging Face e diz se cabe na placa.
+    pub async fn hub_info(&self, repo: &str, revisao: &str, arquivo: &str, rec: &Recursos) -> Result<Value, MotorError> {
+        let info = crate::hub::header_info(&self.http, self.hf_token().as_deref(), repo, revisao, arquivo).await.map_err(Self::hub_err)?;
+        let r = self.hub_repo(repo).await?;
+        let f = r.arquivos.iter().find(|f| f.partes.first().map(|p| p.nome.as_str()) == Some(arquivo) || f.nome == arquivo);
+        let tamanho = f.map(|f| f.tamanho).unwrap_or(0);
+        let shape = budget::ModelShape {
+            tamanho_arquivo: tamanho,
+            camadas: info.camadas,
+            kv_bytes_por_token: info.kv_bytes_por_token(),
+            contexto_max: info.contexto_treino,
+            embd: info.embd,
+        };
+        let plano = budget::plan(&shape, rec, self.settings().contexto_preferido);
+        Ok(json!({"info": info, "plano": plano, "rotulo": plano.encaixe.rotulo()}))
+    }
+
+    /// Baixa um modelo (todas as partes) de qualquer repositório, com o mmproj se pedido.
+    pub fn start_hub_download(self: &Arc<Self>, repo: String, arquivo: String, com_mmproj: Option<String>) -> Result<String, MotorError> {
+        if !crate::hub::valid_repo(&repo) {
+            return Err(MotorError::Invalido("Repositório inválido.".into()));
+        }
+        let tid = format!("hf:{repo}/{arquivo}");
+        let nome_curto = arquivo.rsplit('/').next().unwrap_or(&arquivo).trim_end_matches(".gguf").to_string();
+        let cancel = self.task_begin(&tid, "modelo", &nome_curto, None)?;
+        let tid_out = tid.clone();
+        let me = self.clone();
+        tokio::spawn(async move {
+            let r = me.hub_download_inner(&repo, &arquivo, com_mmproj.as_deref(), &tid, &cancel).await;
+            match r {
+                Ok(nome) => {
+                    me.task_finish(&tid, "concluida", None);
+                    me.aviso("info", format!("{nome} baixado e pronto para usar."));
+                }
+                Err(MotorError::Ocupado(_)) => me.task_finish(&tid, "pausada", None),
+                Err(e) => {
+                    me.task_finish(&tid, "erro", Some(e.to_string()));
+                    me.aviso("erro", format!("Download de {nome_curto} falhou: {e}"));
+                }
+            }
+        });
+        Ok(tid_out)
+    }
+
+    async fn hub_download_inner(
+        &self,
+        repo: &str,
+        arquivo: &str,
+        com_mmproj: Option<&str>,
+        tid: &str,
+        cancel: &CancellationToken,
+    ) -> Result<String, MotorError> {
+        let r = self.hub_repo(repo).await?;
+        let f = r
+            .arquivos
+            .iter()
+            .find(|f| f.nome == arquivo || f.partes.first().map(|p| p.nome.as_str()) == Some(arquivo))
+            .cloned()
+            .ok_or_else(|| MotorError::Invalido(format!("O arquivo {arquivo} não está mais no repositório.")))?;
+        let mm = com_mmproj.and_then(|n| r.mmproj.iter().find(|p| p.nome == n).cloned());
+        let pasta = self.paths.models_dir().join("hf").join(repo.replace('/', "__"));
+        let total: u64 = f.tamanho + mm.as_ref().map(|p| p.tamanho).unwrap_or(0);
+        let token = self.hf_token();
+        let mut feito = 0u64;
+        let mut locais: Vec<PathBuf> = Vec::new();
+        for parte in f.partes.iter().chain(mm.iter()) {
+            let base = parte.nome.rsplit('/').next().unwrap_or(&parte.nome).to_string();
+            let dest = pasta.join(crate::util::safe_file_name(&base));
+            let antes = feito;
+            let cb = |p: Progress| self.task_progress(tid, Progress { baixado: antes + p.baixado, total: Some(total) });
+            let url = crate::hub::file_url(repo, &r.revisao, &parte.nome);
+            if !dest.exists() {
+                match download::download_file(
+                    &self.http,
+                    &url,
+                    &dest,
+                    parte.sha256.as_deref(),
+                    Some(parte.tamanho),
+                    cancel,
+                    &cb,
+                    token.as_deref(),
+                )
+                .await
+                {
+                    Ok(()) => {}
+                    Err(DownloadError::Cancelled) => return Err(MotorError::Ocupado("cancelado".into())),
+                    Err(DownloadError::Http(401 | 403)) => {
+                        return Err(MotorError::Invalido(crate::hub::HubError::PedeAceite { repo: repo.into() }.to_string()))
+                    }
+                    Err(e) => return Err(MotorError::Falhou(e.to_string())),
+                }
+            }
+            feito += parte.tamanho;
+            locais.push(dest);
+        }
+        let mmproj_local = if mm.is_some() { locais.pop() } else { None };
+        let principal = locais.first().cloned().ok_or_else(|| MotorError::Falhou("nada baixado".into()))?;
+        let stem = f.nome.rsplit('/').next().unwrap_or(&f.nome).trim_end_matches(".gguf").to_string();
+        let id = format!("hf/{repo}/{stem}");
+        let nome = match &f.quantizacao {
+            Some(q) => format!("{} ({q})", repo.rsplit('/').next().unwrap_or(repo).trim_end_matches("-GGUF").trim_end_matches("-gguf")),
+            None => stem.clone(),
+        };
+        let mut im = InstalledModel::from_file(
+            id,
+            Some(nome.clone()),
+            principal,
+            Origem::HuggingFace { repo: repo.into(), arquivo: f.nome.clone(), revisao: r.revisao.clone() },
+            f.partes.first().and_then(|p| p.sha256.clone()),
+        )
+        .map_err(|e| MotorError::Falhou(e.to_string()))?;
+        im.partes = locais.into_iter().skip(1).collect();
+        im.mmproj = mmproj_local;
+        im.tamanho = total;
+        im.licenca = r.licenca.clone();
+        self.registry.lock().unwrap().add(im).map_err(|e| MotorError::Falhou(e.to_string()))?;
+        self.bump();
+        Ok(nome)
     }
 
     // ---------- Ollama e arquivos locais ----------
@@ -1486,6 +1683,7 @@ impl Motor {
                 "id": i.modelo_id, "nome": i.modelo_nome, "contexto": i.plano.contexto,
                 "camadas_na_placa": i.plano.camadas_na_placa, "todas_na_placa": i.plano.todas_na_placa,
                 "encaixe": i.plano.encaixe, "embeddings": i.embeddings, "desde": i.desde,
+                "memoria_placa_mb": i.plano.memoria_placa_mb, "memoria_ram_mb": i.plano.memoria_ram_mb,
             })
         });
         let proximo_motor = self.engine_order().first().map(|(c, _)| json!({"variante": c.variante, "nome": c.nome, "backend": c.backend}));

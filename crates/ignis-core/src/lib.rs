@@ -15,6 +15,7 @@ pub mod download;
 pub mod engine;
 pub mod gguf;
 pub mod gpu;
+pub mod hub;
 pub mod models;
 pub mod ollama;
 pub mod paths;

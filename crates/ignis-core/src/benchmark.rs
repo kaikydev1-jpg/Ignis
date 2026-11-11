@@ -92,6 +92,7 @@ pub async fn bench_one(exe: &Path, variante: &str, backend: Backend, modelo: &Pa
         backend,
         variante: variante.into(),
         args_extras: vec![],
+        mmproj: None,
     };
     let mut result = BenchResult {
         variante: variante.into(),

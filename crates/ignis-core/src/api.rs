@@ -137,6 +137,11 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/motor/atualizacoes", get(atualizacoes))
         .route("/motor/atualizacoes/procurar", post(atualizacoes_procurar))
         .route("/motor/atualizacoes/aplicar", post(atualizacoes_aplicar))
+        .route("/motor/hf/buscar", get(hf_buscar))
+        .route("/motor/hf/repo", get(hf_repo))
+        .route("/motor/hf/info", post(hf_info))
+        .route("/motor/hf/baixar", post(hf_baixar))
+        .route("/motor/hf/conta", get(hf_conta).post(hf_conta_salvar))
         .layer(middleware::from_fn(guard))
         .with_state(motor)
 }
@@ -360,6 +365,7 @@ async fn modelos(State(m): M) -> Response {
                 "existe": x.existe(), "carregado": carregado.as_deref() == Some(x.id.as_str()),
                 "padrao": padrao.as_deref() == Some(x.id.as_str()), "licenca": x.licenca, "arquivo": x.arquivo,
                 "encaixe": plano.encaixe, "rotulo": plano.encaixe.rotulo(), "aviso": plano.aviso, "contexto": plano.contexto,
+                "memoria_placa_mb": plano.memoria_placa_mb, "memoria_ram_mb": plano.memoria_ram_mb,
             })
         })
         .collect();
@@ -379,6 +385,9 @@ async fn modelos(State(m): M) -> Response {
                 o.insert("encaixe".into(), json!(plano.encaixe));
                 o.insert("rotulo".into(), json!(plano.encaixe.rotulo()));
                 o.insert("aviso".into(), json!(plano.aviso));
+                o.insert("memoria_placa_mb".into(), json!(plano.memoria_placa_mb));
+                o.insert("memoria_ram_mb".into(), json!(plano.memoria_ram_mb));
+                o.insert("contexto_plano".into(), json!(plano.contexto));
                 let recomendado = plano.encaixe == budget::Encaixe::Placa
                     || (!rec.usa_placa && plano.encaixe == budget::Encaixe::Processador && c.parametros_bilhoes <= 4.0);
                 o.insert("recomendado".into(), json!(recomendado));
@@ -388,7 +397,7 @@ async fn modelos(State(m): M) -> Response {
             v
         })
         .collect();
-    ok(json!({"instalados": instalados, "catalogo": catalogo, "tarefas": tarefas}))
+    ok(json!({"instalados": instalados, "catalogo": catalogo, "tarefas": tarefas, "recursos": rec}))
 }
 
 #[derive(Deserialize)]
@@ -585,6 +594,97 @@ struct AplicarBody {
 async fn atualizacoes_aplicar(State(m): M, Json(b): Json<AplicarBody>) -> Response {
     match m.apply_update(&b.item) {
         Ok(()) => ok(json!({"ok": true})),
+        Err(e) => e.into_response(),
+    }
+}
+
+// ---------- Hugging Face ----------
+
+type Q = axum::extract::Query<std::collections::HashMap<String, String>>;
+
+async fn hf_buscar(State(m): M, q: Q) -> Response {
+    let termo = q.get("q").cloned().unwrap_or_default();
+    match m.hub_search(&termo).await {
+        Ok(v) => ok(json!({"modelos": v, "conta": m.hf_conta()})),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn hf_repo(State(m): M, q: Q) -> Response {
+    let repo = q.get("repo").cloned().unwrap_or_default();
+    let r = match m.hub_repo(&repo).await {
+        Ok(r) => r,
+        Err(e) => return e.into_response(),
+    };
+    // estimativa só pelo tamanho (o cabeçalho exato é lido em /motor/hf/info)
+    let rec = recursos_para(&m);
+    let ctx = m.settings().contexto_preferido;
+    let arquivos: Vec<Value> = r
+        .arquivos
+        .iter()
+        .map(|f| {
+            let shape = budget::ModelShape {
+                tamanho_arquivo: f.tamanho,
+                camadas: 32,
+                kv_bytes_por_token: 128 * 1024,
+                contexto_max: 32_768,
+                embd: 4096,
+            };
+            let plano = budget::plan(&shape, &rec, ctx);
+            let mut v = serde_json::to_value(f).unwrap_or(Value::Null);
+            if let Value::Object(o) = &mut v {
+                o.insert("encaixe".into(), json!(plano.encaixe));
+                o.insert("rotulo".into(), json!(plano.encaixe.rotulo()));
+                o.insert("memoria_placa_mb".into(), json!(plano.memoria_placa_mb));
+                o.insert("primeira_parte".into(), json!(f.partes.first().map(|p| p.nome.clone())));
+            }
+            v
+        })
+        .collect();
+    ok(json!({
+        "repo": r.repo, "revisao": r.revisao, "pede_aceite": r.pede_aceite, "licenca": r.licenca,
+        "arquivos": arquivos, "mmproj": r.mmproj, "conta": m.hf_conta(), "recursos": rec,
+        "pagina": format!("https://huggingface.co/{}", r.repo),
+    }))
+}
+
+#[derive(Deserialize)]
+struct HfArquivo {
+    repo: String,
+    #[serde(default)]
+    revisao: Option<String>,
+    arquivo: String,
+    #[serde(default)]
+    mmproj: Option<String>,
+}
+
+async fn hf_info(State(m): M, Json(b): Json<HfArquivo>) -> Response {
+    let rec = recursos_para(&m);
+    match m.hub_info(&b.repo, b.revisao.as_deref().unwrap_or("main"), &b.arquivo, &rec).await {
+        Ok(v) => ok(v),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn hf_baixar(State(m): M, Json(b): Json<HfArquivo>) -> Response {
+    match m.start_hub_download(b.repo, b.arquivo, b.mmproj) {
+        Ok(t) => ok(json!({"ok": true, "tarefa": t})),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn hf_conta(State(m): M) -> Response {
+    ok(m.hf_conta())
+}
+
+#[derive(Deserialize)]
+struct TokenBody {
+    token: String,
+}
+
+async fn hf_conta_salvar(State(m): M, Json(b): Json<TokenBody>) -> Response {
+    match m.set_hf_token(&b.token).await {
+        Ok(v) => ok(v),
         Err(e) => e.into_response(),
     }
 }

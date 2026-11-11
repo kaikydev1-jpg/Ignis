@@ -124,6 +124,7 @@ fn hash_prefix(path: &Path, h: &mut Sha256) -> std::io::Result<()> {
 }
 
 /// Baixa `url` para `dest`, retomando de `dest.part` se existir.
+#[allow(clippy::too_many_arguments)]
 pub async fn download_file(
     client: &reqwest::Client,
     url: &str,
@@ -132,6 +133,7 @@ pub async fn download_file(
     expected_size: Option<u64>,
     cancel: &CancellationToken,
     on_progress: &(dyn Fn(Progress) + Send + Sync),
+    hf_token: Option<&str>,
 ) -> Result<(), DownloadError> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
@@ -158,6 +160,13 @@ pub async fn download_file(
                 .map_err(|e| DownloadError::Io(std::io::Error::other(e)))??;
         }
         let mut req = client.get(url);
+        // o token da pessoa só vai para o Hugging Face (redirecionamentos para
+        // outros servidores não levam o cabeçalho de autorização)
+        if let Some(t) = hf_token.filter(|t| !t.is_empty()) {
+            if url.starts_with(&crate::hub::base_url()) {
+                req = req.bearer_auth(t);
+            }
+        }
         if have > 0 {
             req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
         }

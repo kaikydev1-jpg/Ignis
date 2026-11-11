@@ -30,6 +30,9 @@ pub struct LaunchSpec {
     pub variante: String,
     #[serde(default)]
     pub args_extras: Vec<String>,
+    /// Arquivo de visão/áudio (mmproj).
+    #[serde(default)]
+    pub mmproj: Option<PathBuf>,
 }
 
 impl LaunchSpec {
@@ -53,6 +56,10 @@ impl LaunchSpec {
         ];
         if self.embeddings {
             a.push("--embeddings".into());
+        }
+        if let Some(mm) = &self.mmproj {
+            a.push("--mmproj".into());
+            a.push(mm.to_string_lossy().into_owned());
         }
         a.extend(self.args_extras.iter().cloned());
         a
@@ -342,6 +349,7 @@ mod tests {
             backend: Backend::Cpu,
             variante: "linux-cpu".into(),
             args_extras: vec![],
+            mmproj: None,
         };
         let a = s.args(5555);
         assert!(a.windows(2).any(|w| w == ["--host", "127.0.0.1"]));
