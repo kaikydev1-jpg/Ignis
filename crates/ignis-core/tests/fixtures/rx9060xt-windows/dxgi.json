@@ -1,0 +1,18 @@
+[
+  {
+    "nome": "AMD Radeon RX 9060 XT",
+    "vendor": 4098,
+    "device": 30096,
+    "vram_total_mb": 16304,
+    "vram_livre_mb": 15200,
+    "driver": "32.0.21025.1024"
+  },
+  {
+    "nome": "Microsoft Basic Render Driver",
+    "vendor": 5140,
+    "device": 140,
+    "vram_total_mb": 0,
+    "vram_livre_mb": null,
+    "driver": null
+  }
+]

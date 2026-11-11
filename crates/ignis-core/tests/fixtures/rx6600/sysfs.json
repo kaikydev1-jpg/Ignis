@@ -1,0 +1,10 @@
+[
+  {
+    "vendor": 4098,
+    "device": 29695,
+    "driver": "amdgpu",
+    "vram_total_mb": 8176,
+    "vram_usada_mb": 402,
+    "pci_slot": "0000:03:00.0"
+  }
+]

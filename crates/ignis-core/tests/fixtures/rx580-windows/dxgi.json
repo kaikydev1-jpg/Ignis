@@ -1,0 +1,10 @@
+[
+  {
+    "nome": "Radeon RX 580 Series",
+    "vendor": 4098,
+    "device": 26591,
+    "vram_total_mb": 8192,
+    "vram_livre_mb": 7600,
+    "driver": "31.0.21921.1000"
+  }
+]

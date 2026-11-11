@@ -1,0 +1,10 @@
+[
+  {
+    "vendor": 4318,
+    "device": 9476,
+    "driver": "nvidia",
+    "vram_total_mb": null,
+    "vram_usada_mb": null,
+    "pci_slot": "0000:01:00.0"
+  }
+]
