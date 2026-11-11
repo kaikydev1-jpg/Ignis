@@ -28,6 +28,7 @@ dirs.workspace = true
 flate2.workspace = true
 tar.workspace = true
 zip.workspace = true
+webpki-root-certs = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

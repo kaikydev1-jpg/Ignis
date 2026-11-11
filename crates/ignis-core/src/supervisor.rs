@@ -301,10 +301,11 @@ pub fn local_client() -> reqwest::Client {
     crate::install_crypto_provider();
     reqwest::Client::builder()
         .no_proxy()
+        .tls_certs_only(Vec::new())
         .connect_timeout(Duration::from_secs(5))
         .pool_idle_timeout(Duration::from_secs(30))
         .build()
-        .expect("cliente local")
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

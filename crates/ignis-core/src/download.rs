@@ -61,14 +61,39 @@ pub fn remove_partial(dest: &Path) {
 }
 
 /// Cliente HTTP padrão do Ignis (sem telemetria; User-Agent genérico).
+///
+/// Usa os certificados do sistema; se eles não puderem ser lidos (ex.: Flatpak
+/// com variável SSL_CERT_FILE apontando para fora do sandbox), usa a lista da
+/// Mozilla embutida. Nunca trava o aplicativo.
 pub fn http_client() -> reqwest::Client {
     crate::install_crypto_provider();
-    reqwest::Client::builder()
-        .user_agent(crate::consts::USER_AGENT)
-        .connect_timeout(Duration::from_secs(20))
-        .read_timeout(Duration::from_secs(90))
-        .build()
-        .expect("cliente HTTP")
+    let base = || {
+        reqwest::Client::builder()
+            .user_agent(crate::consts::USER_AGENT)
+            .connect_timeout(Duration::from_secs(20))
+            .read_timeout(Duration::from_secs(90))
+    };
+    match base().build() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("certificados do sistema indisponíveis ({e}); usando a lista embutida da Mozilla");
+            base().tls_certs_only(embedded_roots()).build().unwrap_or_else(|e| {
+                tracing::error!("cliente HTTP sem TLS: {e}");
+                plain_client()
+            })
+        }
+    }
+}
+
+/// Autoridades certificadoras embutidas (Mozilla, via webpki-root-certs).
+pub fn embedded_roots() -> Vec<reqwest::Certificate> {
+    webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().filter_map(|c| reqwest::Certificate::from_der(c.as_ref()).ok()).collect()
+}
+
+/// Cliente só para endereços locais (127.0.0.1): não carrega certificados.
+pub fn plain_client() -> reqwest::Client {
+    crate::install_crypto_provider();
+    reqwest::Client::builder().no_proxy().tls_certs_only(Vec::new()).build().unwrap_or_default()
 }
 
 /// SHA-256 de um arquivo inteiro (bloqueante).

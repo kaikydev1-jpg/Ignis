@@ -370,7 +370,7 @@ mod janela {
         };
         ignis_core::install_crypto_provider();
         let base = format!("http://127.0.0.1:{porta}");
-        let http = reqwest::Client::builder().no_proxy().build().expect("cliente");
+        let http = ignis_core::download::plain_client();
         let canal = Canal { base: base.clone(), senha: senha.clone(), http: http.clone(), paths };
         tauri::Builder::default()
             .plugin(tauri_plugin_opener::init())

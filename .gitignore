@@ -6,3 +6,8 @@
 /dist
 .DS_Store
 *.log
+/packaging/flatpak/build-dir
+/packaging/flatpak/repo
+/packaging/flatpak/.flatpak-builder
+/packaging/flatpak/ignis.deb
+*.flatpak

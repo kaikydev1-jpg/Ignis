@@ -1,0 +1,38 @@
+# Flatpak do Ignis — para o Fedora Atomic (Silverblue, Kinoite, Bazzite...) e
+# qualquer distro com Flatpak. Empacota o binário já compilado (vindo do .deb
+# gerado pelo CI) sobre o runtime do GNOME, que já traz WebKitGTK 4.1 e Vulkan.
+#
+# Gerar:  ./build.sh caminho/para/Ignis_X.Y.Z_amd64.deb
+id: io.github.kaikydev1jpg.Ignis
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: ignis
+finish-args:
+  - --share=ipc
+  - --share=network            # API local (127.0.0.1) e downloads de motores/modelos
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=all               # placa de vídeo (Vulkan, NVIDIA)
+  - --talk-name=org.kde.StatusNotifierWatcher   # ícone perto do relógio
+  - --filesystem=xdg-run/tray-icon:create       # imagem do ícone para o painel
+  - --filesystem=xdg-config/autostart:create    # "abrir com o computador"
+  - --filesystem=~/.ollama:ro                   # importar do Ollama (só leitura)
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+  - name: ignis
+    buildsystem: simple
+    sources:
+      - type: file
+        path: ignis.deb
+      - type: file
+        path: io.github.kaikydev1jpg.Ignis.metainfo.xml
+    build-commands:
+      - ar -x ignis.deb
+      - tar -xf data.tar.*
+      - install -Dm755 usr/bin/ignis /app/bin/ignis
+      - install -Dm644 usr/share/applications/Ignis.desktop /app/share/applications/io.github.kaikydev1jpg.Ignis.desktop
+      - sed -i 's/^Icon=.*/Icon=io.github.kaikydev1jpg.Ignis/' /app/share/applications/io.github.kaikydev1jpg.Ignis.desktop
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/ignis.png /app/share/icons/hicolor/32x32/apps/io.github.kaikydev1jpg.Ignis.png
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/ignis.png /app/share/icons/hicolor/128x128/apps/io.github.kaikydev1jpg.Ignis.png
+      - install -Dm644 io.github.kaikydev1jpg.Ignis.metainfo.xml /app/share/metainfo/io.github.kaikydev1jpg.Ignis.metainfo.xml

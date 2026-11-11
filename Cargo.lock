@@ -1919,6 +1919,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "tracing",
+ "webpki-root-certs",
  "windows 0.61.3",
  "winreg 0.55.0",
  "zip",

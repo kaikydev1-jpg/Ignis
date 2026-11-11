@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.kaikydev1jpg.Ignis</id>
+  <name>Ignis</name>
+  <summary>Motor de IA local com a aceleração da sua placa</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>Roda modelos de IA no próprio computador, escolhendo sozinho o motor mais rápido para a sua placa (AMD, NVIDIA, Intel ou processador). Fica perto do relógio e atende outros programas por uma porta local compatível com a API da OpenAI.</p>
+  </description>
+  <launchable type="desktop-id">io.github.kaikydev1jpg.Ignis.desktop</launchable>
+  <url type="homepage">https://github.com/kaikydev1-jpg/Ignis</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-11"/>
+  </releases>
+</component>
