@@ -389,6 +389,8 @@ mod janela {
                 s.layout = cfg.property::<Option<String>>("gtk-decoration-layout");
                 s.tema = cfg.property::<Option<String>>("gtk-theme-name");
             }
+            // Matsu OS (Fedora Atomic do criador): bolinhas com as cores exatas dele.
+            s.matsu = ignis_core::distro::eh_matsu(&ignis_core::distro::ler_os_release());
         }
         s
     }

@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "fake-llama-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "bytes",
@@ -1867,7 +1867,7 @@ dependencies = [
 
 [[package]]
 name = "ignis-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "gtk",
@@ -1886,7 +1886,7 @@ dependencies = [
 
 [[package]]
 name = "ignis-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ignis-core",
  "serde_json",
@@ -1896,7 +1896,7 @@ dependencies = [
 
 [[package]]
 name = "ignis-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",

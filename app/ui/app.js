@@ -47,12 +47,14 @@ const ICONES_JANELA = {
     maximize: '<path d="M4 10l4-4 4 4"/>',
     restaurar: '<path d="M8 3.5l4.5 4.5L8 12.5 3.5 8z"/>',
     close: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>' },
+  // Bolinhas do macOS: × e − finos, e o verde com os dois triângulos (tela cheia).
   mac: { caixa: 12,
-    minimize: '<path d="M3 6h6"/>',
-    maximize: '<path d="M6 3v6M3 6h6"/>',
-    restaurar: '<path d="M6 3v6M3 6h6"/>',
-    close: '<path d="M3.5 3.5l5 5M8.5 3.5l-5 5"/>' },
+    minimize: '<path d="M2.8 6h6.4"/>',
+    maximize: '<path d="M3.4 3.3h3.3L3.4 6.6zM8.6 8.7H5.3l3.3-3.3z" fill="currentColor" stroke="none"/>',
+    restaurar: '<path d="M5.7 5.7H2.9l2.8-2.8zM6.3 6.3h2.8L6.3 9.1z" fill="currentColor" stroke="none"/>',
+    close: '<path d="M3.7 3.7l4.6 4.6M8.3 3.7L3.7 8.3"/>' },
 };
+ICONES_JANELA.matsu = ICONES_JANELA.mac; // Matsu OS: mesmos desenhos, cores exatas do sistema (style.css)
 const NOMES_JANELA = { minimize: "Minimizar", maximize: "Maximizar", close: "Fechar (o Ignis continua perto do relógio)" };
 
 (function barraDeTitulo() {

@@ -7,7 +7,7 @@
 
 use serde::Serialize;
 
-pub const ESTILOS: [&str; 5] = ["auto", "windows", "gnome", "kde", "mac"];
+pub const ESTILOS: [&str; 6] = ["auto", "windows", "gnome", "kde", "mac", "matsu"];
 
 const BOTOES: [&str; 3] = ["close", "minimize", "maximize"];
 /// Padrão do GTK quando o sistema não diz nada.
@@ -34,6 +34,8 @@ pub struct Sistema {
     pub tema: Option<String>,
     /// `XDG_CURRENT_DESKTOP`, ex.: "GNOME", "KDE", "ubuntu:GNOME".
     pub desktop: Option<String>,
+    /// Matsu OS (do criador): bolinhas com as cores exatas do sistema dele.
+    pub matsu: bool,
 }
 
 /// Lê "esquerda:direita", ficando só com fechar, minimizar e maximizar.
@@ -79,6 +81,7 @@ pub fn escolher(sis: &Sistema, preferido: &str) -> BotoesJanela {
     match preferido {
         "windows" => montar("windows", LAYOUT_WINDOWS),
         "mac" => montar("mac", LAYOUT_MAC),
+        "matsu" => montar("matsu", if linux { layout_do_sistema.unwrap_or(LAYOUT_MAC) } else { LAYOUT_MAC }),
         "gnome" | "kde" => montar(preferido, if linux { layout_do_sistema.unwrap_or(LAYOUT_GTK_PADRAO) } else { LAYOUT_WINDOWS }),
         _ => {
             if sis.so == "windows" {
@@ -86,6 +89,9 @@ pub fn escolher(sis: &Sistema, preferido: &str) -> BotoesJanela {
             }
             if sis.so == "mac" {
                 return montar("mac", LAYOUT_MAC);
+            }
+            if sis.matsu {
+                return montar("matsu", layout_do_sistema.unwrap_or(LAYOUT_MAC));
             }
             let layout = layout_do_sistema.unwrap_or(LAYOUT_GTK_PADRAO);
             let desktop = sis.desktop.as_deref().unwrap_or("").to_uppercase();
@@ -109,7 +115,13 @@ mod tests {
     use super::*;
 
     fn linux(layout: Option<&str>, tema: Option<&str>, desktop: Option<&str>) -> Sistema {
-        Sistema { so: "linux".into(), layout: layout.map(String::from), tema: tema.map(String::from), desktop: desktop.map(String::from) }
+        Sistema {
+            so: "linux".into(),
+            layout: layout.map(String::from),
+            tema: tema.map(String::from),
+            desktop: desktop.map(String::from),
+            matsu: false,
+        }
     }
     fn v(x: &[&str]) -> Vec<String> {
         x.iter().map(|s| s.to_string()).collect()
@@ -177,6 +189,26 @@ mod tests {
         let (e, d) = ler_layout(" close , close,spacer,icon : maximize,close,xyz");
         assert_eq!((e, d), (v(&["close"]), v(&["maximize"])));
         assert_eq!(ler_layout("minimize,close"), (vec![], v(&["minimize", "close"])));
+    }
+
+    #[test]
+    fn matsu_os_usa_o_estilo_proprio_no_lado_do_sistema() {
+        let mut s = linux(Some("close,minimize,maximize:"), Some("Adwaita-dark"), Some("GNOME"));
+        s.matsu = true;
+        assert_eq!(
+            escolher(&s, "auto"),
+            BotoesJanela { estilo: "matsu".into(), esquerda: v(&["close", "minimize", "maximize"]), direita: vec![] }
+        );
+        // sem saber o lado, fica à esquerda como no Matsu OS
+        s.layout = None;
+        assert_eq!(escolher(&s, "auto").esquerda, v(&["close", "minimize", "maximize"]));
+        // escolha manual em outro sistema também funciona
+        let b = escolher(&linux(Some(":minimize,maximize,close"), None, Some("KDE")), "matsu");
+        assert_eq!((b.estilo.as_str(), b.direita), ("matsu", v(&["minimize", "maximize", "close"])));
+        // a escolha manual vence o Matsu OS
+        let mut s = linux(None, None, None);
+        s.matsu = true;
+        assert_eq!(escolher(&s, "kde").estilo, "kde");
     }
 
     #[test]

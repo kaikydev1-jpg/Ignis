@@ -32,6 +32,7 @@ pub struct Sistema {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct OsRelease {
     pub id: String,
+    pub name: Option<String>,
     pub id_like: Vec<String>,
     pub pretty_name: Option<String>,
     pub version_id: Option<String>,
@@ -46,6 +47,7 @@ pub fn parse_os_release(text: &str) -> OsRelease {
         match k.trim() {
             "ID" => r.id = v.to_lowercase(),
             "ID_LIKE" => r.id_like = v.split_whitespace().map(|s| s.to_lowercase()).collect(),
+            "NAME" => r.name = Some(v),
             "PRETTY_NAME" => r.pretty_name = Some(v),
             "VERSION_ID" => r.version_id = Some(v),
             "VARIANT_ID" => r.variant_id = Some(v.to_lowercase()),
@@ -63,7 +65,7 @@ pub fn classify(os: &OsRelease, ostree: bool) -> Familia {
         os.variant_id.as_deref(),
         Some("silverblue" | "kinoite" | "sericea" | "onyx" | "cosmic-atomic" | "atomic" | "iot" | "coreos")
     );
-    if is("fedora") || os.id == "bazzite" || os.id == "bluefin" || os.id == "aurora" {
+    if is("fedora") || os.id == "bazzite" || os.id == "bluefin" || os.id == "aurora" || eh_matsu(os) {
         if ostree || atomic_variant {
             return Familia::FedoraAtomic;
         }
@@ -81,6 +83,19 @@ pub fn classify(os: &OsRelease, ostree: bool) -> Familia {
     Familia::OutraLinux
 }
 
+/// Matsu OS (do criador do Ignis), baseado no Fedora Atomic.
+pub fn eh_matsu(os: &OsRelease) -> bool {
+    let tem = |s: &str| s.to_lowercase().replace([' ', '-', '_'], "").contains("matsu");
+    tem(&os.id) || os.name.as_deref().is_some_and(tem) || os.pretty_name.as_deref().is_some_and(tem)
+}
+
+/// Lê o os-release do sistema (no Flatpak, o do sistema de verdade, em /run/host).
+pub fn ler_os_release() -> OsRelease {
+    let candidates = ["/run/host/os-release", "/run/host/etc/os-release", "/etc/os-release", "/usr/lib/os-release"];
+    let text = candidates.iter().find_map(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
+    parse_os_release(&text)
+}
+
 impl Sistema {
     pub fn detect() -> Self {
         let flatpak = std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists();
@@ -92,9 +107,7 @@ impl Sistema {
             return Self { familia: Familia::Mac, nome: "macOS".into(), versao: None, flatpak, appimage };
         }
         // Dentro do Flatpak o /etc/os-release é do runtime; o do sistema fica em /run/host.
-        let candidates = ["/run/host/os-release", "/run/host/etc/os-release", "/etc/os-release", "/usr/lib/os-release"];
-        let text = candidates.iter().find_map(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
-        let os = parse_os_release(&text);
+        let os = ler_os_release();
         let ostree = std::path::Path::new("/run/ostree-booted").exists();
         Self {
             familia: classify(&os, ostree),
@@ -147,6 +160,18 @@ pub const PACOTES_ROCM: Pacotes =
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn matsu_os_e_reconhecido_e_vira_fedora_atomic() {
+        let os = parse_os_release("NAME=\"Matsu OS\"\nID=matsu\nID_LIKE=\"fedora\"\nPRETTY_NAME=\"Matsu OS 44 (Atomic)\"\n");
+        assert!(eh_matsu(&os));
+        assert_eq!(classify(&os, true), Familia::FedoraAtomic);
+        // mesmo sem ID_LIKE, o nome basta
+        let os = parse_os_release("NAME=\"MatsuOS\"\nID=matsuos\n");
+        assert!(eh_matsu(&os));
+        assert_eq!(classify(&os, true), Familia::FedoraAtomic);
+        assert!(!eh_matsu(&parse_os_release(FEDORA_44)));
+    }
 
     const FEDORA_44: &str = r#"NAME="Fedora Linux"
 VERSION="44 (Workstation Edition)"
