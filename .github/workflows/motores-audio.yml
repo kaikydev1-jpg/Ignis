@@ -180,9 +180,12 @@ jobs:
           espera() { for i in $(seq 1 180); do curl -sf "http://127.0.0.1:$1/health" >/dev/null && return 0; sleep 1; done; return 1; }
           ./voz/tts-server$EXE --model base.gguf --codec tokenizer.gguf --host 127.0.0.1 --port 18700 > voz.log 2>&1 &
           espera 18700 || { cat voz.log; exit 1; }
+          PY=$(command -v python3 || command -v python)
+          # o texto vai num arquivo em UTF-8 (no Windows, a linha de comando pode trocar os acentos)
+          "$PY" -c "import json; open('pedido.json','w',encoding='utf-8').write(json.dumps({'input':'Olá! Este é um teste do motor de voz do Ignis.','language':'Portuguese','response_format':'wav','seed':42}, ensure_ascii=False))"
           T0=$(date +%s)
-          curl -sf -X POST http://127.0.0.1:18700/v1/audio/speech -H 'Content-Type: application/json' \
-            -d '{"input":"Olá! Este é um teste do motor de voz do Ignis.","language":"Portuguese","response_format":"wav","seed":42}' -o fala.wav
+          CODIGO=$(curl -s -o fala.wav -w '%{http_code}' -X POST http://127.0.0.1:18700/v1/audio/speech -H 'Content-Type: application/json; charset=utf-8' --data-binary @pedido.json)
+          if [ "$CODIGO" != 200 ]; then echo "HTTP $CODIGO"; head -c 2000 fala.wav; echo; cat voz.log; exit 1; fi
           echo "voz gerada em $(( $(date +%s) - T0 )) s: $(wc -c < fala.wav) bytes"
           head -c 4 fala.wav | grep -q RIFF
           test "$(wc -c < fala.wav)" -gt 20000
@@ -190,7 +193,7 @@ jobs:
           espera 18701 || { cat transcricao.log; exit 1; }
           curl -sf http://127.0.0.1:18701/v1/audio/transcriptions -F file=@fala.wav -F response_format=verbose_json -F language=pt -o texto.json
           cat texto.json; echo
-          python3 -c "import json,sys; t=json.load(open('texto.json'))['text'].lower(); print('transcrito:', t); sys.exit(0 if 'teste' in t or 'ignis' in t else 1)"
+          "$PY" -c "import json,sys; t=json.load(open('texto.json',encoding='utf-8'))['text'].lower(); print('transcrito:', t.encode('ascii','replace').decode()); sys.exit(0 if 'teste' in t or 'ignis' in t else 1)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
