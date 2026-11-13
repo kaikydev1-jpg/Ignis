@@ -1,0 +1,257 @@
+name: Motores de áudio
+
+# Compila os motores de voz (omnivoice.cpp, tts-server) e de transcrição
+# (whisper.cpp, whisper-server) a partir de versões fixadas, para Windows e
+# Linux, nas versões Vulkan (AMD, Intel e NVIDIA) e processador. Testa de
+# verdade no processador: gera uma voz e transcreve de volta.
+# GERAR NÃO É PUBLICAR: os binários só viram release ("motores-audio-N",
+# pré-lançamento, nunca a "latest" do app) com "publicar = sim".
+
+on:
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: "Publicar os binários na release dos motores de áudio? (nao / sim)"
+        required: true
+        default: "nao"
+        type: choice
+        options: ["nao", "sim"]
+  push:
+    paths:
+      - ".github/workflows/motores-audio.yml"
+
+concurrency:
+  group: motores-audio-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  OMNIVOICE_REPO: https://github.com/ServeurpersoCom/omnivoice.cpp
+  OMNIVOICE_COMMIT: a5bd24f6b675335d1c9c0e945793d0de9fabe9a4
+  WHISPER_REPO: https://github.com/ggml-org/whisper.cpp
+  WHISPER_TAG: v1.9.5
+  WHISPER_COMMIT: d1be6fde11ac6e0407606b4e42fe72d34add8037
+  TAG_MOTORES: motores-audio-1
+  # binário portátil: sem -march=native; AVX2 (processadores de 2013 em diante); sem OpenMP
+  CMAKE_COMUM: >-
+    -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+    -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON
+    -DGGML_OPENMP=OFF -DGGML_BLAS=OFF
+
+jobs:
+  compilar:
+    name: ${{ matrix.so }} ${{ matrix.backend }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { so: linux, runner: ubuntu-22.04, backend: cpu }
+          - { so: linux, runner: ubuntu-22.04, backend: vulkan }
+          - { so: windows, runner: windows-latest, backend: cpu }
+          - { so: windows, runner: windows-latest, backend: vulkan }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ferramentas (Linux)
+        if: matrix.so == 'linux'
+        timeout-minutes: 30
+        run: ./scripts/apt-instalar.sh build-essential cmake ninja-build git
+
+      - name: Vulkan SDK (Linux)
+        if: matrix.so == 'linux' && matrix.backend == 'vulkan'
+        run: |
+          ./scripts/apt-instalar.sh libvulkan-dev
+          mkdir -p "$RUNNER_TEMP/vk" && cd "$RUNNER_TEMP/vk"
+          curl -fsSL --retry 3 -o sdk.tar.xz https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.xz
+          tar -xf sdk.tar.xz
+          SDK=$(ls -d "$RUNNER_TEMP"/vk/*/x86_64 | head -1)
+          echo "VULKAN_SDK=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/bin" >> "$GITHUB_PATH"
+          "$SDK/bin/glslc" --version | head -1
+
+      - name: MSVC (Windows)
+        if: matrix.so == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Vulkan SDK (Windows)
+        if: matrix.so == 'windows' && matrix.backend == 'vulkan'
+        shell: pwsh
+        run: |
+          curl.exe -fsSL --retry 3 -o "$env:RUNNER_TEMP\vulkan-sdk.exe" https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe
+          & "$env:RUNNER_TEMP\vulkan-sdk.exe" --accept-licenses --default-answer --confirm-command install | Out-Null
+          $sdk = (Get-ChildItem C:\VulkanSDK -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=$sdk"
+          Add-Content $env:GITHUB_PATH "$sdk\Bin"
+          & "$sdk\Bin\glslc.exe" --version | Select-Object -First 1
+
+      - name: Baixar os fontes (versões fixadas)
+        run: |
+          git clone --recurse-submodules "$OMNIVOICE_REPO" omnivoice
+          git -C omnivoice checkout "$OMNIVOICE_COMMIT"
+          git -C omnivoice submodule update --init --recursive
+          git clone --depth 1 --branch "$WHISPER_TAG" "$WHISPER_REPO" whisper
+          test "$(git -C whisper rev-parse HEAD)" = "$WHISPER_COMMIT"
+
+      - name: Compilar
+        run: |
+          EXTRA=""
+          [ "${{ matrix.backend }}" = vulkan ] && EXTRA="-DGGML_VULKAN=ON"
+          LINK=""
+          [ "${{ matrix.so }}" = linux ] && LINK="-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
+          cmake -S omnivoice -B omnivoice/build $CMAKE_COMUM $EXTRA ${LINK:+"$LINK"}
+          cmake --build omnivoice/build --target tts-server -j 4
+          cmake -S whisper -B whisper/build $CMAKE_COMUM $EXTRA ${LINK:+"$LINK"} \
+            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_SERVER=ON -DWHISPER_SDL2=OFF -DWHISPER_CURL=OFF
+          cmake --build whisper/build --target whisper-server -j 4
+
+      - name: Empacotar
+        run: |
+          EXE=""; [ "${{ matrix.so }}" = windows ] && EXE=".exe"
+          V="ignis-voz-${{ matrix.so }}-${{ matrix.backend }}"
+          T="ignis-transcricao-${{ matrix.so }}-${{ matrix.backend }}"
+          mkdir -p pacotes "$V" "$T"
+          cp "$(find omnivoice/build -name "tts-server$EXE" -type f | head -1)" "$V/"
+          cp omnivoice/LICENSE "$V/LICENSE-omnivoice.cpp.txt"
+          cp omnivoice/ggml/LICENSE "$V/LICENSE-ggml.txt" 2>/dev/null || true
+          cp "$(find whisper/build -name "whisper-server$EXE" -type f | head -1)" "$T/"
+          cp whisper/LICENSE "$T/LICENSE-whisper.cpp.txt"
+          if [ "${{ matrix.so }}" = windows ]; then
+            7z a "pacotes/$V.zip" "./$V/*" >/dev/null
+            7z a "pacotes/$T.zip" "./$T/*" >/dev/null
+          else
+            ldd "$V/tts-server" | sed 's/^/  /'
+            tar -czf "pacotes/$V.tar.gz" -C "$V" .
+            tar -czf "pacotes/$T.tar.gz" -C "$T" .
+          fi
+          ls -la pacotes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: motores-audio-${{ matrix.so }}-${{ matrix.backend }}
+          path: pacotes/*
+          retention-days: 90
+
+  testar:
+    name: Teste de verdade (${{ matrix.so }}, processador)
+    needs: compilar
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { so: linux, runner: ubuntu-22.04 }
+          - { so: windows, runner: windows-latest }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      HF: https://huggingface.co
+      VOZ_REV: 017094167b5c9ed565a5076ac9b3b93c5ecf5c73
+      WHISPER_REV: 5359861c739e955e79d9a303bcbc70fb988958b1
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: motores-audio-${{ matrix.so }}-cpu
+          path: pacotes
+      - name: Extrair
+        run: |
+          mkdir voz transcricao
+          if [ "${{ matrix.so }}" = windows ]; then
+            7z x pacotes/ignis-voz-windows-cpu.zip -ovoz >/dev/null
+            7z x pacotes/ignis-transcricao-windows-cpu.zip -otranscricao >/dev/null
+          else
+            tar -xzf pacotes/ignis-voz-linux-cpu.tar.gz -C voz
+            tar -xzf pacotes/ignis-transcricao-linux-cpu.tar.gz -C transcricao
+          fi
+          ls -la voz transcricao
+      - name: Modelos (conferidos por SHA-256)
+        run: |
+          baixa() { curl -fsSL --retry 3 -o "$2" "$1"; echo "$3  $2" | sha256sum -c -; }
+          baixa "$HF/Serveurperso/OmniVoice-GGUF/resolve/$VOZ_REV/omnivoice-base-Q4_K_M.gguf" base.gguf 4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6
+          baixa "$HF/Serveurperso/OmniVoice-GGUF/resolve/$VOZ_REV/omnivoice-tokenizer-Q4_K_M.gguf" tokenizer.gguf 988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d
+          baixa "$HF/ggerganov/whisper.cpp/resolve/$WHISPER_REV/ggml-base-q5_1.bin" whisper.bin 422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898
+      - name: Gerar uma voz e transcrever de volta
+        run: |
+          EXE=""; [ "${{ matrix.so }}" = windows ] && EXE=".exe"
+          espera() { for i in $(seq 1 180); do curl -sf "http://127.0.0.1:$1/health" >/dev/null && return 0; sleep 1; done; return 1; }
+          ./voz/tts-server$EXE --model base.gguf --codec tokenizer.gguf --host 127.0.0.1 --port 18700 > voz.log 2>&1 &
+          espera 18700 || { cat voz.log; exit 1; }
+          T0=$(date +%s)
+          curl -sf -X POST http://127.0.0.1:18700/v1/audio/speech -H 'Content-Type: application/json' \
+            -d '{"input":"Olá! Este é um teste do motor de voz do Ignis.","language":"Portuguese","response_format":"wav","seed":42}' -o fala.wav
+          echo "voz gerada em $(( $(date +%s) - T0 )) s: $(wc -c < fala.wav) bytes"
+          head -c 4 fala.wav | grep -q RIFF
+          test "$(wc -c < fala.wav)" -gt 20000
+          ./transcricao/whisper-server$EXE -m whisper.bin --host 127.0.0.1 --port 18701 --inference-path /v1/audio/transcriptions > transcricao.log 2>&1 &
+          espera 18701 || { cat transcricao.log; exit 1; }
+          curl -sf http://127.0.0.1:18701/v1/audio/transcriptions -F file=@fala.wav -F response_format=verbose_json -F language=pt -o texto.json
+          cat texto.json; echo
+          python3 -c "import json,sys; t=json.load(open('texto.json'))['text'].lower(); print('transcrito:', t); sys.exit(0 if 'teste' in t or 'ignis' in t else 1)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: teste-audio-${{ matrix.so }}
+          path: |
+            fala.wav
+            texto.json
+            voz.log
+            transcricao.log
+          retention-days: 30
+
+  vulkan-software:
+    name: Vulkan sem placa (lavapipe, Linux), só para informação
+    needs: compilar
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: motores-audio-linux-vulkan
+          path: pacotes
+      - name: Rodar o motor de voz Vulkan num Vulkan de software
+        run: |
+          ./scripts/apt-instalar.sh mesa-vulkan-drivers libvulkan1
+          mkdir voz && tar -xzf pacotes/ignis-voz-linux-vulkan.tar.gz -C voz
+          curl -fsSL --retry 3 -o base.gguf https://huggingface.co/Serveurperso/OmniVoice-GGUF/resolve/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/omnivoice-base-Q4_K_M.gguf
+          curl -fsSL --retry 3 -o tok.gguf https://huggingface.co/Serveurperso/OmniVoice-GGUF/resolve/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/omnivoice-tokenizer-Q4_K_M.gguf
+          ./voz/tts-server --model base.gguf --codec tok.gguf --host 127.0.0.1 --port 18710 > vk.log 2>&1 &
+          for i in $(seq 1 240); do curl -sf http://127.0.0.1:18710/health >/dev/null && break; sleep 1; done
+          curl -sf -X POST http://127.0.0.1:18710/v1/audio/speech -H 'Content-Type: application/json' \
+            -d '{"input":"Teste.","language":"Portuguese","response_format":"wav","seed":1}' -o vk.wav && ls -la vk.wav
+          grep -i -E "vulkan|device|lavapipe|llvmpipe" vk.log | head -20 || true
+
+  publicar:
+    name: Publicar os motores de áudio (só a pedido)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.publicar == 'sim'
+    needs: [compilar, testar]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: motores-audio-*
+          path: pacotes
+          merge-multiple: true
+      - name: Somas SHA-256
+        run: cd pacotes && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt && ls -l
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_MOTORES }}
+          target_commitish: ${{ github.sha }}
+          name: Motores de áudio do Ignis (${{ env.TAG_MOTORES }})
+          prerelease: true
+          make_latest: "false"
+          overwrite_files: true
+          body: |
+            Motores de voz e transcrição usados pelo Ignis (baixados por ele, conforme a placa). Não é o aplicativo: para instalar o Ignis, use a versão mais recente.
+            - Voz: omnivoice.cpp ${{ env.OMNIVOICE_COMMIT }} (tts-server), licença MIT.
+            - Transcrição: whisper.cpp ${{ env.WHISPER_TAG }} (whisper-server), licença MIT.
+            - Versões: Vulkan (AMD, Intel e NVIDIA) e processador, para Windows e Linux. Conferência em SHA256SUMS.txt.
+          files: pacotes/*
