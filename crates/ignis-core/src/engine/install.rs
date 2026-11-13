@@ -281,7 +281,7 @@ fn safe_relative(p: &Path) -> Option<PathBuf> {
     (!out.as_os_str().is_empty()).then_some(out)
 }
 
-fn extract(archive: &Path, dest: &Path) -> Result<(), InstallError> {
+pub(crate) fn extract(archive: &Path, dest: &Path) -> Result<(), InstallError> {
     let name = archive.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
     if name.ends_with(".zip") {
         extract_zip(archive, dest)

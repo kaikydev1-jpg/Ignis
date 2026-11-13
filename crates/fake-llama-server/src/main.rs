@@ -18,9 +18,13 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+mod audio;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 struct Config {
+    /// "llama" (padrão), "voz" (imita o tts-server) ou "transcricao" (imita o whisper-server)
+    tipo: String,
     /// "ok", "falha_ao_subir", "cai_depois"
     modo: String,
     cai_depois_ms: u64,
@@ -37,6 +41,7 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            tipo: "llama".into(),
             modo: "ok".into(),
             cai_depois_ms: 0,
             demora_subir_ms: 100,
@@ -86,6 +91,11 @@ async fn main() {
     if cfg.modo == "falha_ao_subir" {
         eprintln!("{}", cfg.log_erro);
         std::process::exit(1);
+    }
+    match cfg.tipo.as_str() {
+        "voz" => return audio::voz(args, cfg.demora_subir_ms).await,
+        "transcricao" => return audio::transcricao(args, cfg.demora_subir_ms).await,
+        _ => {}
     }
     let model = arg(&args, &["-m", "--model"]).unwrap_or_default();
     if !std::path::Path::new(&model).is_file() {

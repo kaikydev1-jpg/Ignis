@@ -30,6 +30,10 @@ use crate::supervisor::{self, Server};
 use crate::updates::{self, UpdateCheck};
 use crate::util::{now_millis, now_unix};
 
+#[path = "service_audio.rs"]
+mod audio_svc;
+pub use audio_svc::{AudioInfo, AudioUso};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Fase {
@@ -152,6 +156,8 @@ pub enum MotorError {
     Ocupado(String),
     #[error("{0}")]
     Invalido(String),
+    #[error("{0}")]
+    AudioNaoPreparado(String),
 }
 
 impl MotorError {
@@ -160,7 +166,7 @@ impl MotorError {
             MotorError::ModeloNaoEncontrado(_) => 404,
             MotorError::Invalido(_) => 400,
             MotorError::Ocupado(_) => 409,
-            MotorError::Pausado | MotorError::SemMotor | MotorError::SemModelo => 503,
+            MotorError::Pausado | MotorError::SemMotor | MotorError::SemModelo | MotorError::AudioNaoPreparado(_) => 503,
             MotorError::ArquivoSumiu(_) | MotorError::Falhou(_) => 500,
         }
     }
@@ -174,6 +180,7 @@ impl MotorError {
             MotorError::Falhou(_) => "motor_falhou",
             MotorError::Ocupado(_) => "ocupado",
             MotorError::Invalido(_) => "invalid_request_error",
+            MotorError::AudioNaoPreparado(_) => "audio_nao_preparado",
         }
     }
 }
@@ -198,6 +205,8 @@ pub struct MotorOptions {
     pub extras_motor: Option<PathBuf>,
     /// Onde procurar modelos já baixados por outros programas (None = pastas do sistema).
     pub pastas_locais: Option<PastasLocais>,
+    /// Manifesto de voz e transcrição alternativo (testes).
+    pub audio_manifest_override: Option<crate::audio::ManifestoAudio>,
 }
 
 /// Pastas de modelos de outros programas (Ollama, Hugging Face, LM Studio).
@@ -230,6 +239,7 @@ impl Default for MotorOptions {
             auto_teste: true,
             extras_motor: None,
             pastas_locais: None,
+            audio_manifest_override: None,
         }
     }
 }
@@ -245,6 +255,13 @@ pub struct Motor {
     detection: RwLock<Option<Detection>>,
     detection_override: Option<Detection>,
     pastas_locais: Option<PastasLocais>,
+    audio_man: crate::audio::ManifestoAudio,
+    audio_store: crate::audio::AudioStore,
+    audio_voz: tokio::sync::Mutex<Option<audio_svc::AudioRodando>>,
+    audio_transcricao: tokio::sync::Mutex<Option<audio_svc::AudioRodando>>,
+    audio_info: RwLock<HashMap<crate::audio::Familia, AudioInfo>>,
+    audio_falhas: Mutex<HashSet<String>>,
+    audio_uso: Mutex<HashMap<crate::audio::Familia, (std::time::Instant, usize)>>,
     estado: Mutex<EstadoPersistido>,
     registry: Mutex<Registry>,
     loaded: tokio::sync::Mutex<Option<Loaded>>,
@@ -323,7 +340,7 @@ impl Motor {
         let (porta_tx, _) = watch::channel(settings.porta);
         let (mudancas, _) = watch::channel(0);
         Arc::new(Self {
-            store: EngineStore::new(paths.engines_dir(), paths.downloads_dir()).with_extras(opts.extras_motor),
+            store: EngineStore::new(paths.engines_dir(), paths.downloads_dir()).with_extras(opts.extras_motor.clone()),
             http: download::http_client(),
             local: supervisor::local_client(),
             settings: RwLock::new(settings.clone()),
@@ -332,6 +349,13 @@ impl Motor {
             detection: RwLock::new(opts.detection_override.clone()),
             detection_override: opts.detection_override,
             pastas_locais: opts.pastas_locais,
+            audio_man: opts.audio_manifest_override.unwrap_or_else(crate::audio::ManifestoAudio::embutido),
+            audio_store: crate::audio::AudioStore::new(paths.data_dir.join("audio"), paths.downloads_dir(), opts.extras_motor.clone()),
+            audio_voz: tokio::sync::Mutex::new(None),
+            audio_transcricao: tokio::sync::Mutex::new(None),
+            audio_info: RwLock::new(HashMap::new()),
+            audio_falhas: Mutex::new(HashSet::new()),
+            audio_uso: Mutex::new(HashMap::new()),
             estado: Mutex::new(estado),
             registry: Mutex::new(registry),
             loaded: tokio::sync::Mutex::new(None),
@@ -523,6 +547,8 @@ impl Motor {
     }
 
     async fn watch_once(self: &Arc<Self>) {
+        // 0) voz e transcrição: queda e descarregar quando parado
+        self.vigiar_audio().await;
         // 1) queda do motor
         let mut crashed: Option<(CarregadoInfo, Vec<String>, Option<i32>)> = None;
         if let Ok(mut g) = self.loaded.try_lock() {
@@ -858,6 +884,7 @@ impl Motor {
                     variante: cand.variante.clone(),
                     args_extras: vec![],
                     mmproj: model.mmproj.clone().filter(|p| p.is_file()),
+                    args_proprios: None,
                 };
                 let t_tentativa = std::time::Instant::now();
                 let resultado = supervisor::start(&spec, &self.local, self.load_timeout).await;
@@ -950,6 +977,7 @@ impl Motor {
         self.paused.store(true, Ordering::SeqCst);
         self.stop_requests(None);
         self.unload().await;
+        self.descarregar_audio(None).await;
         self.aviso("info", "Ignis pausado: o modelo foi descarregado e novos pedidos serão recusados até você retomar.");
     }
 
@@ -2112,6 +2140,7 @@ impl Motor {
                 "modelo_nome": bench.as_ref().and_then(|b| b.modelo_nome.clone()),
             },
             "precisa_preparar": self.needs_preparation(),
+            "audio": self.audio_status_json(),
             "tarefas": self.tarefas(),
             "avisos": self.avisos(),
             "atualizacao": self.update_info(),
@@ -2128,5 +2157,6 @@ impl Motor {
         }
         self.stop_requests(None);
         self.unload().await;
+        self.descarregar_audio(None).await;
     }
 }

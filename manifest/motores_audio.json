@@ -1,0 +1,230 @@
+{
+  "versao_manifesto": 1,
+  "versao": "motores-audio-1",
+  "url_base": "https://github.com/kaikydev1-jpg/Ignis/releases/download/motores-audio-1/",
+  "fontes": {
+    "omnivoice.cpp": "https://github.com/ServeurpersoCom/omnivoice.cpp @ a5bd24f6b675335d1c9c0e945793d0de9fabe9a4",
+    "whisper.cpp": "https://github.com/ggml-org/whisper.cpp @ v1.9.5 (d1be6fde11ac6e0407606b4e42fe72d34add8037)"
+  },
+  "motores": [
+    {
+      "id": "voz-windows-vulkan",
+      "familia": "voz",
+      "so": "windows",
+      "backend": "vulkan",
+      "executavel": "tts-server.exe",
+      "arquivo": {
+        "nome": "ignis-voz-windows-vulkan.zip",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    },
+    {
+      "id": "voz-windows-cpu",
+      "familia": "voz",
+      "so": "windows",
+      "backend": "cpu",
+      "executavel": "tts-server.exe",
+      "arquivo": {
+        "nome": "ignis-voz-windows-cpu.zip",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    },
+    {
+      "id": "voz-linux-vulkan",
+      "familia": "voz",
+      "so": "linux",
+      "backend": "vulkan",
+      "executavel": "tts-server",
+      "arquivo": {
+        "nome": "ignis-voz-linux-vulkan.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    },
+    {
+      "id": "voz-linux-cpu",
+      "familia": "voz",
+      "so": "linux",
+      "backend": "cpu",
+      "executavel": "tts-server",
+      "arquivo": {
+        "nome": "ignis-voz-linux-cpu.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    },
+    {
+      "id": "transcricao-windows-vulkan",
+      "familia": "transcricao",
+      "so": "windows",
+      "backend": "vulkan",
+      "executavel": "whisper-server.exe",
+      "arquivo": {
+        "nome": "ignis-transcricao-windows-vulkan.zip",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    },
+    {
+      "id": "transcricao-windows-cpu",
+      "familia": "transcricao",
+      "so": "windows",
+      "backend": "cpu",
+      "executavel": "whisper-server.exe",
+      "arquivo": {
+        "nome": "ignis-transcricao-windows-cpu.zip",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    },
+    {
+      "id": "transcricao-linux-vulkan",
+      "familia": "transcricao",
+      "so": "linux",
+      "backend": "vulkan",
+      "executavel": "whisper-server",
+      "arquivo": {
+        "nome": "ignis-transcricao-linux-vulkan.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    },
+    {
+      "id": "transcricao-linux-cpu",
+      "familia": "transcricao",
+      "so": "linux",
+      "backend": "cpu",
+      "executavel": "whisper-server",
+      "arquivo": {
+        "nome": "ignis-transcricao-linux-cpu.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "tamanho": 1
+      }
+    }
+  ],
+  "modelos": [
+    {
+      "id": "omnivoice-bf16",
+      "familia": "voz",
+      "nome": "OmniVoice (qualidade máxima)",
+      "perfis": [
+        "placa-grande"
+      ],
+      "repo": "Serveurperso/OmniVoice-GGUF",
+      "revisao": "017094167b5c9ed565a5076ac9b3b93c5ecf5c73",
+      "arquivos": [
+        {
+          "nome": "omnivoice-base-BF16.gguf",
+          "sha256": "c4d2e4e6506a88f9c9900621606470bca6a523c72819bf4a5e5dac80961075bf",
+          "tamanho": 1230624768
+        },
+        {
+          "nome": "omnivoice-tokenizer-BF16.gguf",
+          "sha256": "c2179e4cf528b19fea22a5be94c34c083877bb5fc28ac0245d2b4299a262dcec",
+          "tamanho": 373308160
+        }
+      ],
+      "licenca": "CC BY-NC 4.0 (uso não comercial)",
+      "licenca_url": "https://huggingface.co/k2-fsa/OmniVoice",
+      "uso_comercial": false,
+      "descricao": "Voz e clonagem em 646 idiomas, qualidade máxima. Para placas com 12 GB ou mais."
+    },
+    {
+      "id": "omnivoice-q8",
+      "familia": "voz",
+      "nome": "OmniVoice",
+      "perfis": [
+        "placa"
+      ],
+      "repo": "Serveurperso/OmniVoice-GGUF",
+      "revisao": "017094167b5c9ed565a5076ac9b3b93c5ecf5c73",
+      "arquivos": [
+        {
+          "nome": "omnivoice-base-Q8_0.gguf",
+          "sha256": "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
+          "tamanho": 656395008
+        },
+        {
+          "nome": "omnivoice-tokenizer-Q8_0.gguf",
+          "sha256": "75204fa566a8e30984e7a1066da6557184c9fd099c8f1bc0cb5b9415edfec255",
+          "tamanho": 288889600
+        }
+      ],
+      "licenca": "CC BY-NC 4.0 (uso não comercial)",
+      "licenca_url": "https://huggingface.co/k2-fsa/OmniVoice",
+      "uso_comercial": false,
+      "descricao": "Voz e clonagem em 646 idiomas, o mesmo modelo padrão do Azúria Voice. Para placas de 4 a 12 GB."
+    },
+    {
+      "id": "omnivoice-q4",
+      "familia": "voz",
+      "nome": "OmniVoice (leve)",
+      "perfis": [
+        "placa-pequena",
+        "processador"
+      ],
+      "repo": "Serveurperso/OmniVoice-GGUF",
+      "revisao": "017094167b5c9ed565a5076ac9b3b93c5ecf5c73",
+      "arquivos": [
+        {
+          "nome": "omnivoice-base-Q4_K_M.gguf",
+          "sha256": "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
+          "tamanho": 407485216
+        },
+        {
+          "nome": "omnivoice-tokenizer-Q4_K_M.gguf",
+          "sha256": "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
+          "tamanho": 252474112
+        }
+      ],
+      "licenca": "CC BY-NC 4.0 (uso não comercial)",
+      "licenca_url": "https://huggingface.co/k2-fsa/OmniVoice",
+      "uso_comercial": false,
+      "descricao": "Voz e clonagem em 646 idiomas, versão leve para placas pequenas e para o processador."
+    },
+    {
+      "id": "whisper-large-v3-turbo",
+      "familia": "transcricao",
+      "nome": "Whisper large-v3 turbo",
+      "perfis": [
+        "placa"
+      ],
+      "repo": "ggerganov/whisper.cpp",
+      "revisao": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "arquivos": [
+        {
+          "nome": "ggml-large-v3-turbo-q5_0.bin",
+          "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+          "tamanho": 574041195
+        }
+      ],
+      "licenca": "MIT",
+      "licenca_url": "https://huggingface.co/ggerganov/whisper.cpp",
+      "uso_comercial": true,
+      "descricao": "Transcrição e tradução para inglês em ~100 idiomas, com marcação de tempo. Rápido na placa."
+    },
+    {
+      "id": "whisper-small",
+      "familia": "transcricao",
+      "nome": "Whisper small",
+      "perfis": [
+        "processador"
+      ],
+      "repo": "ggerganov/whisper.cpp",
+      "revisao": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "arquivos": [
+        {
+          "nome": "ggml-small-q5_1.bin",
+          "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+          "tamanho": 190085487
+        }
+      ],
+      "licenca": "MIT",
+      "licenca_url": "https://huggingface.co/ggerganov/whisper.cpp",
+      "uso_comercial": true,
+      "descricao": "Transcrição em ~100 idiomas, leve para o processador."
+    }
+  ]
+}

@@ -33,10 +33,17 @@ pub struct LaunchSpec {
     /// Arquivo de visão/áudio (mmproj).
     #[serde(default)]
     pub mmproj: Option<PathBuf>,
+    /// Argumentos de outro servidor (voz: tts-server; transcrição: whisper-server).
+    /// `{porta}` vira a porta escolhida. Sem isto, os argumentos são os do llama-server.
+    #[serde(default)]
+    pub args_proprios: Option<Vec<String>>,
 }
 
 impl LaunchSpec {
     pub fn args(&self, porta: u16) -> Vec<String> {
+        if let Some(a) = &self.args_proprios {
+            return a.iter().map(|x| x.replace("{porta}", &porta.to_string())).collect();
+        }
         let mut a: Vec<String> = vec![
             "-m".into(),
             self.modelo.to_string_lossy().into_owned(),
@@ -350,6 +357,7 @@ mod tests {
             variante: "linux-cpu".into(),
             args_extras: vec![],
             mmproj: None,
+            args_proprios: None,
         };
         let a = s.args(5555);
         assert!(a.windows(2).any(|w| w == ["--host", "127.0.0.1"]));

@@ -89,6 +89,18 @@ pub fn safe_file_name(s: &str) -> String {
     out
 }
 
+/// Tamanho total de uma pasta (recursivo; ignora o que não conseguir ler).
+pub fn dir_size(dir: &std::path::Path) -> u64 {
+    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    rd.flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => dir_size(&e.path()),
+            Ok(_) => e.metadata().map(|m| m.len()).unwrap_or(0),
+            Err(_) => 0,
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

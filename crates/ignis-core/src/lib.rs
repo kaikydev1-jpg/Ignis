@@ -4,6 +4,8 @@
 //! interface gráfica e sem placa de vídeo.
 
 pub mod api;
+pub mod atualizador;
+pub mod audio;
 pub mod autostart;
 pub mod benchmark;
 pub mod budget;

@@ -191,7 +191,8 @@ jobs:
           test "$(wc -c < fala.wav)" -gt 20000
           ./transcricao/whisper-server$EXE -m whisper.bin --host 127.0.0.1 --port 18701 --inference-path /v1/audio/transcriptions > transcricao.log 2>&1 &
           espera 18701 || { cat transcricao.log; exit 1; }
-          curl -sf http://127.0.0.1:18701/v1/audio/transcriptions -F file=@fala.wav -F response_format=verbose_json -F language=pt -o texto.json
+          CODIGO=$(curl -s -o texto.json -w '%{http_code}' http://127.0.0.1:18701/v1/audio/transcriptions -F "file=@fala.wav;type=audio/wav" -F response_format=verbose_json -F language=pt)
+          if [ "$CODIGO" != 200 ]; then echo "HTTP $CODIGO"; head -c 2000 texto.json; echo; cat transcricao.log; exit 1; fi
           cat texto.json; echo
           "$PY" -c "import json,sys; t=json.load(open('texto.json',encoding='utf-8'))['text'].lower(); print('transcrito:', t.encode('ascii','replace').decode()); sys.exit(0 if 'teste' in t or 'ignis' in t else 1)"
       - uses: actions/upload-artifact@v4

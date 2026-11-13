@@ -139,6 +139,7 @@ pub fn ambiente_com(op: Opcoes, pastas_locais: Option<PastasLocais>) -> Ambiente
             auto_teste: false,
             extras_motor: None,
             pastas_locais,
+            audio_manifest_override: Some(manifesto_audio_simulado()),
         },
     );
     Ambiente { dir, motor, paths }
@@ -237,5 +238,64 @@ pub fn catalogo_com(itens: &[(&str, &str, &str, &str, u64, bool)]) -> Catalog {
                 url: Some("http://127.0.0.1:9/nao-existe".into()),
             })
             .collect(),
+    }
+}
+
+/// Manifesto de voz e transcrição para os testes (motores Vulkan e processador deste sistema).
+pub fn manifesto_audio_simulado() -> ignis_core::audio::ManifestoAudio {
+    use ignis_core::audio::{Familia, ManifestoAudio, ModeloAudio, MotorAudio};
+    let so = current_os().to_string();
+    let exe = |n: &str| if cfg!(windows) { format!("{n}.exe") } else { n.to_string() };
+    let mut motores = Vec::new();
+    for (fam, chave, servidor) in [(Familia::Voz, "voz", "tts-server"), (Familia::Transcricao, "transcricao", "whisper-server")] {
+        for backend in [Backend::Vulkan, Backend::Cpu] {
+            let b = if backend == Backend::Cpu { "cpu" } else { "vulkan" };
+            motores.push(MotorAudio {
+                id: format!("{chave}-{so}-{b}"),
+                familia: fam,
+                so: so.clone(),
+                backend,
+                executavel: exe(servidor),
+                arquivo: AssetFile { nome: format!("{chave}-{b}.zip"), sha256: "b".repeat(64), tamanho: 10 },
+            });
+        }
+    }
+    let modelo = |id: &str, fam: Familia, arquivos: &[&str]| ModeloAudio {
+        id: id.into(),
+        familia: fam,
+        nome: id.into(),
+        perfis: vec!["placa-grande".into(), "placa".into(), "placa-pequena".into(), "processador".into()],
+        repo: "teste/teste".into(),
+        revisao: "c".repeat(40),
+        arquivos: arquivos.iter().map(|n| AssetFile { nome: (*n).into(), sha256: "d".repeat(64), tamanho: 4 }).collect(),
+        licenca: "MIT".into(),
+        licenca_url: "https://exemplo.invalid".into(),
+        uso_comercial: true,
+        descricao: "teste".into(),
+    };
+    ManifestoAudio {
+        versao_manifesto: 1,
+        versao: "teste-1".into(),
+        url_base: "http://127.0.0.1:9/nao-existe/".into(),
+        motores,
+        modelos: vec![
+            modelo("voz-teste", Familia::Voz, &["base.gguf", "tok.gguf"]),
+            modelo("whisper-teste", Familia::Transcricao, &["ggml.bin"]),
+        ],
+    }
+}
+
+/// Instala os motores de áudio simulados (`(id, fake.json)`) e os modelos de teste.
+pub fn instalar_audio(m: &Motor, motores: &[(&str, Value)]) {
+    let man = m.audio_manifest().clone();
+    for (id, cfg) in motores {
+        let mo = man.motores.iter().find(|x| x.id == *id).unwrap_or_else(|| panic!("motor {id} no manifesto de teste"));
+        m.audio_store()
+            .instalar_motor_de_arquivo(&man, mo, Path::new(FAKE), &[("fake.json", serde_json::to_vec(cfg).unwrap().as_slice())])
+            .unwrap();
+    }
+    for mo in &man.modelos {
+        let conteudos: Vec<&[u8]> = mo.arquivos.iter().map(|_| b"GGUF".as_slice()).collect();
+        m.audio_store().instalar_modelo_de_arquivos(mo, &conteudos).unwrap();
     }
 }

@@ -10,11 +10,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::extract::{DefaultBodyLimit, Path as CaminhoUrl, Request, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -122,6 +122,15 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/completions", post(completions))
         .route("/v1/embeddings", post(embeddings))
+        .route("/v1/audio/speech", post(audio_fala))
+        .route("/v1/audio/voices", get(vozes_listar).post(vozes_salvar))
+        .route("/v1/audio/voices/{nome}", delete(voz_apagar))
+        .route("/v1/audio/transcriptions", post(audio_transcrever))
+        .route("/v1/audio/translations", post(audio_traduzir))
+        .route("/motor/audio", get(audio_estado))
+        .route("/motor/audio/preparar", post(audio_preparar))
+        .route("/motor/audio/descarregar", post(audio_descarregar))
+        .route("/motor/audio/teste", post(audio_teste))
         .route("/motor/estado", get(estado))
         .route("/motor/versao", get(versao))
         .route("/motor/relatorio", get(relatorio))
@@ -190,7 +199,188 @@ async fn v1_models(State(m): M) -> Response {
             })
         })
         .collect();
+    let mut data = data;
+    // voz e transcrição preparadas aparecem com os nomes que os clientes esperam
+    let estado_audio = m.audio_plano();
+    if estado_audio["voz"]["preparado"] == json!(true) {
+        data.push(json!({"id": "omnivoice", "object": "model", "owned_by": "ignis",
+            "ignis": {"tipo": "voz", "nome": estado_audio["voz"]["modelo_em_uso"]["nome"]}}));
+    }
+    if estado_audio["transcricao"]["preparado"] == json!(true) {
+        data.push(json!({"id": "whisper-1", "object": "model", "owned_by": "ignis",
+            "ignis": {"tipo": "transcricao", "nome": estado_audio["transcricao"]["modelo_em_uso"]["nome"]}}));
+    }
     ok(json!({"object": "list", "data": data}))
+}
+
+// ---------- voz e transcrição ----------
+
+/// Repassa a resposta de um servidor de áudio (com streaming), mantendo o uso
+/// marcado até o fim (para não descarregar no meio).
+fn repassar_audio(resp: reqwest::Response, uso: crate::service::AudioUso) -> Response {
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let ctype =
+        resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("application/octet-stream").to_string();
+    let corpo = resp.bytes_stream().map(move |c| {
+        let _manter = &uso;
+        c.map_err(std::io::Error::other)
+    });
+    Response::builder().status(status).header(header::CONTENT_TYPE, ctype).body(Body::from_stream(corpo)).unwrap()
+}
+
+/// `POST /v1/audio/speech` (formato da OpenAI; servidor de voz omnivoice.cpp).
+async fn audio_fala(State(m): M, body: Bytes) -> Response {
+    let v: Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return err_response(400, "json_invalido", "O corpo do pedido precisa ser JSON válido."),
+    };
+    if v.get("input").and_then(|x| x.as_str()).map(str::trim).unwrap_or("").is_empty() {
+        return err_response(400, "invalid_request_error", "Mande o texto a falar em \"input\".");
+    }
+    let uso = m.audio_inicio_uso(crate::audio::Familia::Voz);
+    let info = match m.garantir_audio(crate::audio::Familia::Voz).await {
+        Ok(i) => i,
+        Err(e) => return e.into_response(),
+    };
+    match m
+        .http_local()
+        .post(format!("{}/v1/audio/speech", info.base_url))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(r) => repassar_audio(r, uso),
+        Err(e) => err_response(502, "motor_sem_resposta", &format!("O servidor de voz não respondeu ({e}). Tente de novo.")),
+    }
+}
+
+async fn vozes_listar(State(m): M) -> Response {
+    let data: Vec<Value> = m.vozes().into_iter().map(|v| json!({"name": v.name, "ref_text": v.ref_text})).collect();
+    ok(json!({"object": "list", "data": data}))
+}
+
+async fn vozes_salvar(State(m): M, body: Bytes) -> Response {
+    let v: crate::audio::VozSalva = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return err_response(400, "json_invalido", "Mande {\"name\", \"ref_text\", \"wav_b64\"} (ou \"rvq_b64\")."),
+    };
+    match m.salvar_voz(v).await {
+        Ok(r) => ok(r),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn voz_apagar(State(m): M, CaminhoUrl(nome): CaminhoUrl<String>) -> Response {
+    if m.apagar_voz(&nome).await {
+        ok(json!({"ok": true}))
+    } else {
+        err_response(404, "voz_nao_encontrada", &format!("Não há voz chamada \"{nome}\"."))
+    }
+}
+
+async fn transcrever_com(m: Arc<Motor>, headers: axum::http::HeaderMap, body: Bytes, traduzir: bool) -> Response {
+    let ctype = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    if !ctype.starts_with("multipart/form-data") {
+        return err_response(
+            400,
+            "invalid_request_error",
+            "Mande o áudio como multipart/form-data, no campo \"file\" (formato da OpenAI).",
+        );
+    }
+    let body = if traduzir {
+        match crate::audio::multipart_com_campo(&body, &ctype, "translate", "true") {
+            Some(b) => Bytes::from(b),
+            None => return err_response(400, "invalid_request_error", "Corpo multipart inválido."),
+        }
+    } else {
+        body
+    };
+    let uso = m.audio_inicio_uso(crate::audio::Familia::Transcricao);
+    let info = match m.garantir_audio(crate::audio::Familia::Transcricao).await {
+        Ok(i) => i,
+        Err(e) => return e.into_response(),
+    };
+    match m
+        .http_local()
+        .post(format!("{}{}", info.base_url, crate::audio::ROTA_TRANSCRICAO))
+        .header(header::CONTENT_TYPE, ctype)
+        .body(body)
+        .send()
+        .await
+    {
+        Ok(r) => repassar_audio(r, uso),
+        Err(e) => err_response(502, "motor_sem_resposta", &format!("O servidor de transcrição não respondeu ({e}). Tente de novo.")),
+    }
+}
+
+/// `POST /v1/audio/transcriptions` (formato da OpenAI; whisper.cpp).
+async fn audio_transcrever(State(m): M, headers: axum::http::HeaderMap, body: Bytes) -> Response {
+    transcrever_com(m, headers, body, false).await
+}
+
+/// `POST /v1/audio/translations`: transcreve já traduzindo para o inglês.
+async fn audio_traduzir(State(m): M, headers: axum::http::HeaderMap, body: Bytes) -> Response {
+    transcrever_com(m, headers, body, true).await
+}
+
+async fn audio_estado(State(m): M) -> Response {
+    ok(m.audio_plano())
+}
+
+async fn audio_preparar(State(m): M, body: Bytes) -> Response {
+    let pedidas: Vec<crate::audio::Familia> = serde_json::from_slice::<Value>(&body)
+        .ok()
+        .and_then(|v| v.get("familias").and_then(|f| f.as_array()).cloned())
+        .map(|a| a.iter().filter_map(|x| x.as_str().and_then(crate::audio::Familia::de_texto)).collect())
+        .unwrap_or_else(|| crate::audio::Familia::TODAS.to_vec());
+    match m.preparar_audio(pedidas) {
+        Ok(()) => ok(json!({"ok": true})),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn audio_descarregar(State(m): M) -> Response {
+    let n = m.descarregar_audio(None).await;
+    ok(json!({"ok": true, "descarregados": n}))
+}
+
+/// `POST /motor/audio/teste`: gera uma frase de teste (para a janela tocar).
+async fn audio_teste(State(m): M, body: Bytes) -> Response {
+    use base64::Engine as _;
+    let pedido: Value = serde_json::from_slice(&body).unwrap_or(json!({}));
+    let texto =
+        pedido.get("texto").and_then(|x| x.as_str()).unwrap_or("Olá! Eu sou o Ignis. Esta é a minha voz, rodando aqui no seu computador.");
+    let _uso = m.audio_inicio_uso(crate::audio::Familia::Voz);
+    let t0 = std::time::Instant::now();
+    let info = match m.garantir_audio(crate::audio::Familia::Voz).await {
+        Ok(i) => i,
+        Err(e) => return e.into_response(),
+    };
+    let mut corpo = json!({"input": texto, "language": pedido.get("idioma").and_then(|x| x.as_str()).unwrap_or("Portuguese"), "response_format": "wav", "seed": 42});
+    if let Some(v) = pedido.get("voz").and_then(|x| x.as_str()) {
+        corpo["voice"] = json!(v);
+    }
+    let r = match m.http_local().post(format!("{}/v1/audio/speech", info.base_url)).json(&corpo).send().await {
+        Ok(r) => r,
+        Err(e) => return err_response(502, "motor_sem_resposta", &format!("O servidor de voz não respondeu ({e}).")),
+    };
+    if !r.status().is_success() {
+        let st = r.status().as_u16();
+        let txt = r.text().await.unwrap_or_default();
+        return err_response(
+            502,
+            "motor_falhou",
+            &format!("O servidor de voz respondeu {st}: {}", txt.chars().take(300).collect::<String>()),
+        );
+    }
+    match r.bytes().await {
+        Ok(b) => ok(
+            json!({"wav_b64": base64::engine::general_purpose::STANDARD.encode(&b), "segundos": (t0.elapsed().as_secs_f64() * 10.0).round() / 10.0,
+                           "motor": info.motor_nome, "modelo": info.modelo_nome}),
+        ),
+        Err(e) => err_response(502, "motor_sem_resposta", &format!("A resposta da voz foi interrompida ({e}).")),
+    }
 }
 
 async fn chat_completions(State(m): M, body: Bytes) -> Response {

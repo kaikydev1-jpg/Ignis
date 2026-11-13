@@ -114,6 +114,7 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
             auto_teste: false,
             extras_motor: None,
             pastas_locais: Some(Default::default()),
+            audio_manifest_override: None,
         },
     );
     motor.start_background();
