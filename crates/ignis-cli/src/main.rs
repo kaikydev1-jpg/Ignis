@@ -39,9 +39,21 @@ async fn main() {
             let m2 = motor.clone();
             let api = tokio::spawn(async move { ignis_core::api::serve(m2).await });
             eprintln!("Ignis sem janela. API em http://127.0.0.1:{}/v1 — Ctrl+C para sair.", motor.settings().porta);
-            let _ = tokio::signal::ctrl_c().await;
+            // Ctrl+C, ou versão nova pronta para instalar
+            let mut saida = motor.pedido_de_saida();
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = saida.wait_for(|c| c.is_some()) => {}
+            }
+            let comando = saida.borrow().clone();
             motor.shutdown_all().await;
             let _ = api.await;
+            if let Some(c) = comando {
+                eprintln!("Instalando a versão nova do Ignis…");
+                if let Err(e) = ignis_core::atualizador::rodar_separado(&c) {
+                    eprintln!("Não consegui iniciar o instalador: {e}");
+                }
+            }
         }
         "gguf" => {
             let Some(p) = args.get(1) else {

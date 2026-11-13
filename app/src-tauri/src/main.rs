@@ -29,6 +29,7 @@ use serde_json::{json, Value};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::Notify;
 
@@ -169,6 +170,54 @@ mod nucleo {
         modelo: MenuItem<tauri::Wry>,
         pausar: MenuItem<tauri::Wry>,
         descarregar: MenuItem<tauri::Wry>,
+        atualizar: MenuItem<tauri::Wry>,
+    }
+
+    /// Notificação do sistema (Windows, GNOME, KDE...). Sem som e sem insistir.
+    fn notificar(app: &AppHandle, texto: &str) {
+        if let Err(e) = app.notification().builder().title(APP_NAME).body(texto).show() {
+            tracing::warn!("não consegui mostrar a notificação: {e}");
+        }
+    }
+
+    /// "Atualizar" no menu do ícone: instala a versão nova já encontrada ou procura agora.
+    fn atualizar_pela_bandeja(app: AppHandle, motor: Arc<Motor>) {
+        tauri::async_runtime::spawn(async move {
+            if motor.update_info().is_some_and(|u| u.app.is_some()) {
+                if let Err(e) = motor.apply_update("app") {
+                    notificar(&app, &e.to_string());
+                }
+                return;
+            }
+            match motor.check_updates().await {
+                Ok(r) if r.app.is_none() => notificar(&app, "Você já está na versão mais nova do Ignis."),
+                Ok(_) => {} // a vigia da bandeja avisa e troca o texto do menu
+                Err(e) => notificar(&app, &format!("Não consegui procurar atualizações: {e}")),
+            }
+        });
+    }
+
+    /// Quando o núcleo pede (versão nova pronta para instalar): fecha a janela,
+    /// para os motores, roda o instalador separado e sai. Ele reabre o Ignis.
+    fn vigiar_saida(app: AppHandle, motor: Arc<Motor>) {
+        tauri::async_runtime::spawn(async move {
+            let mut rx = motor.pedido_de_saida();
+            if rx.wait_for(|c| c.is_some()).await.is_err() {
+                return;
+            }
+            let comando = rx.borrow().clone();
+            fechar_janela(&app);
+            motor.shutdown_all().await;
+            if let Some(c) = comando {
+                tracing::info!("saindo para instalar a versão nova: {c:?}");
+                if let Err(e) = ignis_core::atualizador::rodar_separado(&c) {
+                    tracing::error!("não consegui iniciar o instalador: {e}");
+                    notificar(&app, &format!("Não consegui iniciar o instalador da versão nova: {e}"));
+                    return;
+                }
+            }
+            app.exit(0);
+        });
     }
 
     fn montar_bandeja(app: &AppHandle) -> tauri::Result<ItensBandeja> {
@@ -176,10 +225,11 @@ mod nucleo {
         let modelo = MenuItem::with_id(app, "modelo", "Modelo: nenhum", false, None::<&str>)?;
         let pausar = MenuItem::with_id(app, "pausar", "Pausar", true, None::<&str>)?;
         let descarregar = MenuItem::with_id(app, "descarregar", "Descarregar modelo", false, None::<&str>)?;
+        let atualizar = MenuItem::with_id(app, "atualizar", "Procurar atualizações", true, None::<&str>)?;
         let sair = MenuItem::with_id(app, "sair", "Sair", true, None::<&str>)?;
         let sep1 = PredefinedMenuItem::separator(app)?;
         let sep2 = PredefinedMenuItem::separator(app)?;
-        let menu = Menu::with_items(app, &[&abrir, &sep1, &modelo, &pausar, &descarregar, &sep2, &sair])?;
+        let menu = Menu::with_items(app, &[&abrir, &sep1, &modelo, &pausar, &descarregar, &sep2, &atualizar, &sair])?;
         let icone = app.default_window_icon().cloned().ok_or_else(|| tauri::Error::AssetNotFound("ícone".into()))?;
         TrayIconBuilder::with_id(BANDEJA)
             .icon(icone)
@@ -204,6 +254,7 @@ mod nucleo {
                             motor.unload().await;
                         });
                     }
+                    "atualizar" => atualizar_pela_bandeja(app.clone(), motor),
                     "sair" => {
                         let app = app.clone();
                         fechar_janela(&app);
@@ -222,14 +273,33 @@ mod nucleo {
                 }
             })
             .build(app)?;
-        Ok(ItensBandeja { modelo, pausar, descarregar })
+        Ok(ItensBandeja { modelo, pausar, descarregar, atualizar })
     }
 
     /// Mantém o menu e a dica do ícone em dia (espera mudanças, sem ficar consultando).
     fn vigiar_bandeja(app: AppHandle, motor: Arc<Motor>, itens: ItensBandeja) {
         tauri::async_runtime::spawn(async move {
             let mut rx = motor.subscribe();
+            let mut notificada: Option<String> = None;
             loop {
+                // versão nova: avisa uma vez (notificação do sistema) e o menu vira "Atualizar"
+                match motor.update_info().and_then(|u| u.app) {
+                    Some(a) => {
+                        let _ = itens.atualizar.set_text(format!("Atualizar para a versão {}", a.versao));
+                        if notificada.as_deref() != Some(a.versao.as_str()) {
+                            let como = if motor.instalacao().automatica() {
+                                "Clique no ícone do Ignis → Atualizar, ou abra o Ignis. É um clique, sem baixar nada à mão."
+                            } else {
+                                "Abra o Ignis para ver como instalar."
+                            };
+                            notificar(&app, &format!("Versão {} disponível. {como}", a.versao));
+                            notificada = Some(a.versao.clone());
+                        }
+                    }
+                    None => {
+                        let _ = itens.atualizar.set_text("Procurar atualizações");
+                    }
+                }
                 let carregado = motor.loaded_info();
                 let (fase, texto) = motor.fase();
                 let modelo = match &carregado {
@@ -262,6 +332,7 @@ mod nucleo {
         tracing::info!("{APP_NAME} {} iniciando (minimizado: {minimizado})", ignis_core::consts::APP_VERSION);
         let app = tauri::Builder::default()
             .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| abrir_janela(app)))
+            .plugin(tauri_plugin_notification::init())
             .setup(move |app| {
                 let extras = app.path().resource_dir().ok().map(|d| d.join("vcrt")).filter(|d| d.is_dir());
                 let motor = Motor::new(paths.clone(), MotorOptions { extras_motor: extras, ..Default::default() });
@@ -281,6 +352,7 @@ mod nucleo {
                 let m3 = motor.clone();
                 tauri::async_runtime::spawn(async move { servir_canal_janela(h, m3).await });
                 let itens = montar_bandeja(app.handle())?;
+                vigiar_saida(app.handle().clone(), motor.clone());
                 vigiar_bandeja(app.handle().clone(), motor, itens);
                 if !minimizado {
                     let h = app.handle().clone();

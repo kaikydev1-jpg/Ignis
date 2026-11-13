@@ -19,8 +19,9 @@ pub struct Settings {
     pub motor_forcado: Option<String>,
     /// Tamanho de contexto desejado (o orçamento pode reduzir).
     pub contexto_preferido: u32,
-    /// Procurar atualizações sozinho uma vez por semana (desligado por padrão: sem conexões sem ação da pessoa).
-    pub procurar_atualizacoes_sozinho: bool,
+    /// Procurar versão nova sozinho, uma vez por dia (só lê a lista pública da versão no GitHub; nada é enviado).
+    /// Nome novo de propósito: quem tinha a opção antiga desligada (o padrão antigo) passa a receber o aviso.
+    pub procurar_atualizacoes: bool,
     /// Caminho de um `llama-server` próprio (opcional, entra como candidato).
     pub llama_server_proprio: Option<PathBuf>,
     /// Modelo usado quando o pedido não diz qual.
@@ -39,7 +40,7 @@ impl Default for Settings {
             descarregar_apos_seg: 10 * 60,
             motor_forcado: None,
             contexto_preferido: 8192,
-            procurar_atualizacoes_sozinho: false,
+            procurar_atualizacoes: true,
             llama_server_proprio: None,
             modelo_padrao: None,
             primeira_execucao_feita: false,
@@ -69,6 +70,8 @@ pub struct SettingsPatch {
     pub descarregar_apos_seg: Option<u64>,
     pub descarregar_apos_min: Option<u64>,
     pub contexto_preferido: Option<u32>,
+    pub procurar_atualizacoes: Option<bool>,
+    /// Nome antigo (0.1/0.2), ainda aceito pela API.
     pub procurar_atualizacoes_sozinho: Option<bool>,
     /// String vazia remove.
     pub llama_server_proprio: Option<String>,
@@ -94,8 +97,8 @@ impl SettingsPatch {
         if let Some(v) = self.contexto_preferido {
             s.contexto_preferido = v;
         }
-        if let Some(v) = self.procurar_atualizacoes_sozinho {
-            s.procurar_atualizacoes_sozinho = v;
+        if let Some(v) = self.procurar_atualizacoes.or(self.procurar_atualizacoes_sozinho) {
+            s.procurar_atualizacoes = v;
         }
         if let Some(v) = self.llama_server_proprio {
             s.llama_server_proprio = if v.trim().is_empty() { None } else { Some(PathBuf::from(v.trim())) };
@@ -120,7 +123,10 @@ mod tests {
         assert_eq!(s.porta, PORTA_PADRAO);
         assert_eq!(s.descarregar_apos_seg, 600);
         assert!(s.abrir_com_computador);
-        assert!(!s.procurar_atualizacoes_sozinho);
+        assert!(s.procurar_atualizacoes);
+        // a opção antiga desligada não desliga o aviso novo
+        let antigo: Settings = serde_json::from_str(r#"{"procurar_atualizacoes_sozinho": false}"#).unwrap();
+        assert!(antigo.procurar_atualizacoes);
     }
 
     #[test]

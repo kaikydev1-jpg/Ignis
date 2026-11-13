@@ -88,6 +88,8 @@ pub struct Opcoes {
     pub config: Value,
     pub tick_ms: u64,
     pub catalog: Option<Catalog>,
+    /// Tipo de instalação simulado (padrão: manual, como rodando do código).
+    pub instalacao: Option<ignis_core::atualizador::Instalacao>,
 }
 
 impl Default for Opcoes {
@@ -97,6 +99,7 @@ impl Default for Opcoes {
             config: json!({}),
             tick_ms: 200,
             catalog: None,
+            instalacao: None,
         }
     }
 }
@@ -111,7 +114,8 @@ pub fn ambiente_com(op: Opcoes, pastas_locais: Option<PastasLocais>) -> Ambiente
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::under(dir.path());
     paths.ensure().unwrap();
-    let mut config = json!({"primeira_execucao_feita": true, "porta": free_port()});
+    // nos testes nunca procura versão nova no GitHub
+    let mut config = json!({"primeira_execucao_feita": true, "porta": free_port(), "procurar_atualizacoes": false});
     if let (Some(base), Some(extra)) = (config.as_object_mut(), op.config.as_object()) {
         for (k, v) in extra {
             base.insert(k.clone(), v.clone());
@@ -140,6 +144,7 @@ pub fn ambiente_com(op: Opcoes, pastas_locais: Option<PastasLocais>) -> Ambiente
             extras_motor: None,
             pastas_locais,
             audio_manifest_override: Some(manifesto_audio_simulado()),
+            instalacao_override: Some(op.instalacao.unwrap_or(ignis_core::atualizador::Instalacao::Manual)),
         },
     );
     Ambiente { dir, motor, paths }

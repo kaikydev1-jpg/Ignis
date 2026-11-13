@@ -496,12 +496,18 @@ function renderMotor() {
   const att = estado.atualizacao;
   if (att) {
     const partes = [];
-    if (att.app) partes.push(`Aplicativo ${esc(att.app.versao)} <button class="botao link" data-link="${esc(att.app.pagina)}">baixar</button>`);
+    if (att.app) partes.push(estado.instalacao && estado.instalacao.automatica
+      ? `Ignis ${esc(att.app.versao)} <button class="botao link" data-acao="att" data-item="app">atualizar agora</button>`
+      : `Ignis ${esc(att.app.versao)} <button class="botao link" data-link="${esc(att.app.pagina)}">ver como instalar</button>`);
     if (att.motor) partes.push(`Motor llama.cpp ${esc(att.motor)} <button class="botao link" data-acao="att" data-item="motor">atualizar</button>`);
     if (att.catalogo) partes.push(`Catálogo de modelos <button class="botao link" data-acao="att" data-item="catalogo">atualizar</button>`);
     pinta($("att-info"), partes.length ? `<div><strong>Atualização disponível</strong><small>${partes.join("; ")}</small></div>`
       : `<div><strong>Tudo em dia</strong><small>Verificado em ${hora(att.verificado_em)}.</small></div>`);
   }
+  const inst = estado.instalacao;
+  if (inst) pinta($("att-instalacao"), `<div><strong>Instalado como: ${esc(inst.nome)}</strong><small>${inst.automatica
+    ? (inst.precisa_reiniciar_pc ? "Atualiza com um clique; a versão nova entra quando você reiniciar o computador." : "Atualiza com um clique: o Ignis baixa, confere, instala e abre de novo sozinho.")
+    : "Esta cópia não atualiza sozinha (rodando do código ou de um jeito desconhecido). Use a página oficial."}</small></div>`);
   $("dica-gnome").classList.toggle("escondido", !(estado.sistema && !["windows", "mac"].includes(estado.sistema.familia)));
 }
 async function carregarConfig() {
@@ -515,7 +521,7 @@ async function carregarConfig() {
   $("cfg-contexto").value = String(c.contexto_preferido);
   $("cfg-botoes").value = c.botoes_janela || "auto";
   $("cfg-autostart").checked = c.abrir_com_computador;
-  $("cfg-att-auto").checked = c.procurar_atualizacoes_sozinho;
+  $("cfg-att-auto").checked = c.procurar_atualizacoes;
   $("cfg-proprio").value = c.llama_server_proprio || "";
   const conta = await api("GET", "/motor/hf/conta");
   renderConta(conta);
@@ -531,7 +537,7 @@ async function salvar(patch, texto) {
   mensagem(texto || "Salvo.", "info");
 }
 $("cfg-autostart").addEventListener("change", (e) => acao(null, () => salvar({ abrir_com_computador: e.target.checked }, e.target.checked ? "O Ignis vai abrir com o computador." : "O Ignis não vai mais abrir com o computador.")));
-$("cfg-att-auto").addEventListener("change", (e) => acao(null, () => salvar({ procurar_atualizacoes_sozinho: e.target.checked })));
+$("cfg-att-auto").addEventListener("change", (e) => acao(null, () => salvar({ procurar_atualizacoes: e.target.checked }, e.target.checked ? "O Ignis vai avisar quando sair versão nova." : "O Ignis não vai mais procurar versão nova sozinho.")));
 $("cfg-descarregar").addEventListener("change", (e) => acao(null, () => salvar({ descarregar_apos_min: Number(e.target.value) })));
 $("cfg-botoes").addEventListener("change", (e) => acao(null, async () => {
   await salvar({ botoes_janela: e.target.value }, "Botões da janela atualizados.");
@@ -669,7 +675,22 @@ document.addEventListener("click", async (e) => {
     case "pausar": return acao(b, () => api("POST", "/motor/pausar"));
     case "retomar": return acao(b, () => api("POST", "/motor/retomar"));
     case "parar": return acao(b, () => api("POST", "/motor/parar", {}));
-    case "att": return acao(b, () => api("POST", "/motor/atualizacoes/aplicar", { item: b.dataset.item }));
+    case "att": {
+      if (b.dataset.item === "app") {
+        const v = estado.atualizacao && estado.atualizacao.app ? estado.atualizacao.app.versao : "";
+        const reinicia = estado.instalacao && estado.instalacao.precisa_reiniciar_pc;
+        const texto = reinicia
+          ? `Instalar o Ignis ${v}? O sistema vai pedir a sua senha, e a versão nova entra quando você reiniciar o computador.`
+          : `Atualizar para o Ignis ${v}? Ele baixa a versão nova, confere, fecha, instala e abre de novo sozinho. Se o sistema pedir, digite a sua senha.`;
+        if (!confirm(texto)) return;
+      }
+      return acao(b, () => api("POST", "/motor/atualizacoes/aplicar", { item: b.dataset.item }));
+    }
+    case "voz-apagar": {
+      if (!confirm(`Apagar a voz "${b.dataset.nome}"?`)) return;
+      return acao(b, async () => { await api("POST", "/motor/audio/vozes/apagar", { nome: b.dataset.nome }); audioPlanoEm = 0; mensagem("Voz apagada.", "info"); });
+    }
+    case "copiar-texto": return copiar(b.dataset.texto, "Copiado.");
     case "hf-abrir": return acao(b, () => hfAbrir(b.dataset.repo));
     case "hf-cabe": return acao(b, async () => {
       const r = await api("POST", "/motor/hf/info", { repo: hfRepoAberto.repo, revisao: hfRepoAberto.revisao, arquivo: b.dataset.arquivo });
@@ -690,6 +711,124 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+// ---------- versão nova (faixa no topo) ----------
+function renderFaixaAtt() {
+  const el = $("faixa-att");
+  const app = estado.atualizacao && estado.atualizacao.app;
+  const tarefa = estado.tarefas.find((t) => t.id === "atualizacao:app" && t.estado === "andamento");
+  if (tarefa) {
+    const pct = tarefa.total ? Math.floor((tarefa.baixado / tarefa.total) * 100) : 0;
+    el.hidden = false;
+    pinta(el, `<div><strong>Baixando o ${esc(tarefa.nome)}…</strong><small>${tamanho(tarefa.baixado)} de ${tamanho(tarefa.total)}. Depois de conferir, o Ignis fecha, instala e abre de novo.</small>
+      <div class="barra-progresso"><span style="width:${pct}%"></span></div></div>`);
+    return;
+  }
+  if (!app) { el.hidden = true; return; }
+  el.hidden = false;
+  const inst = estado.instalacao || {};
+  pinta(el, `<div><strong>Ignis ${esc(app.versao)} disponível</strong><small>Você está na ${esc(estado.app.versao)}.${app.notas ? " " + esc(app.notas) : ""}</small></div>
+    ${inst.automatica
+      ? `<button class="botao primario" data-acao="att" data-item="app">${inst.precisa_reiniciar_pc ? "Instalar" : "Atualizar agora"}</button>`
+      : `<button class="botao" data-link="${esc(app.pagina)}">Ver como instalar</button>`}`);
+}
+
+// ---------- VOZ E TRANSCRIÇÃO ----------
+let audioPlano = null;
+let audioPlanoEm = 0;
+const NOME_FAMILIA = { voz: "Voz", transcricao: "Transcrição" };
+const DESC_FAMILIA = { voz: "Fala um texto, com a voz padrão ou uma voz clonada", transcricao: "Transforma áudio em texto (e traduz para inglês)" };
+const ICONE_FAMILIA = {
+  voz: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+  transcricao: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h10M4 18h7"/></svg>',
+};
+function renderVoz() {
+  const p = audioPlano;
+  if (!p) return;
+  const baixando = estado.tarefas.filter((t) => t.id.startsWith("audio:") && t.estado === "andamento");
+  const linhas = ["voz", "transcricao"].map((f) => {
+    const x = p[f];
+    const m = x.modelo_em_uso || x.modelo;
+    let sit;
+    if (x.rodando) sit = `<span class="etiqueta ok">Na memória: ${esc(x.rodando.backend === "cpu" ? "processador" : "placa (" + x.rodando.motor_nome + ")")}</span>`;
+    else if (x.preparado) sit = '<span class="etiqueta ok">Pronta</span>';
+    else if (baixando.length) sit = '<span class="etiqueta brasa">Baixando…</span>';
+    else sit = `<span class="etiqueta">Falta baixar ${tamanho(x.falta_baixar)}</span>`;
+    const sub = m ? `${esc(m.nome)} · licença ${esc(m.licenca)}` : "Nenhum modelo serve neste computador";
+    return `<div class="linha"><span class="icone-linha">${ICONE_FAMILIA[f]}</span>
+      <div><div class="titulo">${NOME_FAMILIA[f]}</div><div class="sub">${DESC_FAMILIA[f]}</div><div class="sub">${sub}</div></div>
+      <div class="lado">${sit}</div></div>`;
+  });
+  if (baixando.length) {
+    linhas.push(...baixando.map((t) => `<div class="linha"><span></span><div><div class="sub">${esc(t.nome)}: ${tamanho(t.baixado)} de ${tamanho(t.total)}</div>
+      <div class="barra-progresso"><span style="width:${t.total ? Math.floor((t.baixado / t.total) * 100) : 0}%"></span></div></div>
+      <div class="lado"><button class="botao texto" data-acao="cancelar" data-id="${esc(t.id)}">Cancelar</button></div></div>`));
+  }
+  pinta($("voz-estado"), linhas.join(""));
+  const tudo = p.voz.preparado && p.transcricao.preparado;
+  $("btn-voz-preparar").hidden = tudo;
+  $("btn-voz-preparar").disabled = baixando.length > 0;
+  const total = (p.voz.preparado ? 0 : p.voz.falta_baixar) + (p.transcricao.preparado ? 0 : p.transcricao.falta_baixar);
+  $("btn-voz-preparar").textContent = total ? `Preparar voz e transcrição (${tamanho(total)})` : "Preparar voz e transcrição";
+  const mv = p.voz.modelo_em_uso || p.voz.modelo;
+  pinta($("voz-licenca"), mv && mv.uso_comercial === false
+    ? `A voz usa o OmniVoice, com licença ${esc(mv.licenca)}: pode usar à vontade para você, mas <strong>não para vender ou em produto pago</strong>. A transcrição (Whisper) tem licença MIT e pode ser usada em qualquer coisa.`
+    : "");
+  $("btn-voz-ouvir").disabled = !p.voz.preparado;
+  $("btn-voz-descarregar").hidden = !(p.voz.rodando || p.transcricao.rodando);
+  const sel = $("voz-escolha");
+  const atual = sel.value;
+  const opcoes = ['<option value="">Voz padrão</option>'].concat(p.vozes.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`)).join("");
+  if (sel._html !== opcoes) { sel.innerHTML = opcoes; sel._html = opcoes; sel.value = p.vozes.includes(atual) ? atual : ""; }
+  pinta($("voz-lista"), p.vozes.length
+    ? p.vozes.map((n) => `<div class="linha"><span class="icone-linha">${ICONE_FAMILIA.voz}</span><div><div class="titulo">${esc(n)}</div></div>
+      <div class="lado"><button class="botao texto perigo" data-acao="voz-apagar" data-nome="${esc(n)}">Apagar</button></div></div>`).join("")
+    : '<div class="vazio"><strong>Nenhuma voz clonada</strong>Sem voz clonada, o Ignis fala com a voz padrão do modelo.</div>');
+  const base = `http://127.0.0.1:${estado.porta || 11470}/v1`;
+  pinta($("voz-api"), `<div class="ajuste"><div><strong>${esc(base)}</strong><small>Mesmo formato da OpenAI: <span class="mono">/audio/speech</span> (falar), <span class="mono">/audio/transcriptions</span> e <span class="mono">/audio/translations</span> (transcrever) e <span class="mono">/audio/voices</span> (vozes clonadas). Modelos: <span class="mono">omnivoice</span> e <span class="mono">whisper-1</span>.</small></div>
+      <button class="botao" data-acao="copiar-texto" data-texto="${esc(base)}">Copiar</button></div>
+    <div class="ajuste"><div><strong>Azúria Voice</strong><small>Escolha o motor “Ignis” nas configurações do Azúria. Ele usa a placa por aqui, sem instalar nada a mais.</small></div></div>`);
+}
+async function carregarPlanoAudio(forcar) {
+  if (!forcar && Date.now() - audioPlanoEm < 2000) return;
+  audioPlano = await api("GET", "/motor/audio");
+  audioPlanoEm = Date.now();
+}
+$("btn-voz-preparar").addEventListener("click", (e) => acao(e.target, async () => {
+  const mv = audioPlano && (audioPlano.voz.modelo || {});
+  if (mv && mv.uso_comercial === false && !confirm(`A voz usa o modelo OmniVoice, com licença ${mv.licenca}: uso pessoal à vontade, mas não para vender ou em produto pago.\n\nBaixar e preparar?`)) return;
+  await api("POST", "/motor/audio/preparar", { familias: ["voz", "transcricao"] });
+  audioPlanoEm = 0;
+  mensagem("Baixando a voz e a transcrição. Pode continuar usando o Ignis.", "info");
+}));
+$("btn-voz-descarregar").addEventListener("click", (e) => acao(e.target, async () => { await api("POST", "/motor/audio/descarregar"); audioPlanoEm = 0; }));
+$("btn-voz-ouvir").addEventListener("click", (e) => acao(e.target, async () => {
+  const texto = $("voz-texto").value.trim();
+  if (!texto) throw new Error("Escreva o que a voz deve falar.");
+  $("voz-tempo").textContent = "Gerando a fala…";
+  const voz = $("voz-escolha").value;
+  const r = await api("POST", "/motor/audio/teste", voz ? { texto, voz } : { texto });
+  const audio = $("voz-audio");
+  audio.src = "data:audio/wav;base64," + r.wav_b64;
+  audio.hidden = false;
+  audio.play().catch(() => {});
+  $("voz-tempo").textContent = `Gerado em ${virgula(r.segundos)} s no motor ${r.motor}.`;
+  audioPlanoEm = 0;
+}));
+$("btn-clonar").addEventListener("click", (e) => acao(e.target, async () => {
+  const nome = $("clone-nome").value.trim();
+  const texto = $("clone-texto").value.trim();
+  const arq = $("clone-arquivo").files[0];
+  if (!nome || !texto || !arq) throw new Error("Preencha o nome, o texto falado e escolha a gravação (WAV).");
+  if (arq.size > 20 * 1048576) throw new Error("A gravação passa de 20 MB. Use 5 a 15 segundos de fala.");
+  const buf = new Uint8Array(await arq.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  await api("POST", "/motor/audio/vozes", { name: nome, ref_text: texto, wav_b64: btoa(bin) });
+  $("clone-nome").value = ""; $("clone-texto").value = ""; $("clone-arquivo").value = "";
+  audioPlanoEm = 0;
+  mensagem(`Voz "${nome}" salva. Escolha ela em Ouvir.`, "info");
+}));
+
 // ---------- ciclo ----------
 let ocupado = false;
 let ultimoModelos = 0;
@@ -707,6 +846,8 @@ async function atualizar(forcar) {
       if (forcar || agora - ultimoModelos > 1500) { modelos = await api("GET", "/motor/modelos"); ultimoModelos = agora; }
     }
     renderGuia();
+    renderFaixaAtt();
+    if (secao === "voz") { await carregarPlanoAudio(forcar); renderVoz(); }
     if (secao === "placa") { renderPlaca(); renderCandidatos(); }
     if (secao === "modelos") renderModelos();
     if (secao === "motor") { await carregarConfig(); renderMotor(); }

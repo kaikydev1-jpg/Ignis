@@ -297,6 +297,20 @@ select { padding-right: 28px; }
 .aviso #aviso-texto { flex: 1; }
 .aviso.aviso-nivel { border-left-color: var(--alerta); }
 .aviso.erro-nivel { border-left-color: var(--erro); }
+/* ---------- faixa de versão nova ---------- */
+.faixa-att {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 18px; padding: 10px 12px 10px 14px;
+  background: var(--brasa-suave); border: 1px solid color-mix(in srgb, var(--brasa) 35%, transparent); border-radius: 10px;
+}
+.faixa-att > div { flex: 1; min-width: 0; }
+.faixa-att strong { display: block; }
+.faixa-att small { color: var(--suave); }
+.barra-progresso { height: 4px; border-radius: 4px; background: var(--linha); margin-top: 6px; overflow: hidden; }
+.barra-progresso > span { display: block; height: 100%; background: var(--brasa); transition: width 0.3s; }
+#voz-audio { width: 100%; margin-top: 12px; }
+#sec-voz .caixa.busca { padding: 14px 16px; }
+#sec-voz .mais-corpo .linha-campo + .linha-campo { margin-top: 8px; }
+#voz-estado .linha, #voz-lista .linha { grid-template-columns: auto 1fr auto; }
 .aviso-icone { width: 8px; height: 8px; border-radius: 50%; background: var(--brasa); flex: none; }
 .aviso.aviso-nivel .aviso-icone { background: var(--alerta); }
 .aviso.erro-nivel .aviso-icone { background: var(--erro); }

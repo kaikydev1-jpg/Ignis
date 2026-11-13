@@ -131,6 +131,8 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/motor/audio/preparar", post(audio_preparar))
         .route("/motor/audio/descarregar", post(audio_descarregar))
         .route("/motor/audio/teste", post(audio_teste))
+        .route("/motor/audio/vozes", post(vozes_salvar))
+        .route("/motor/audio/vozes/apagar", post(voz_apagar_janela))
         .route("/motor/estado", get(estado))
         .route("/motor/versao", get(versao))
         .route("/motor/relatorio", get(relatorio))
@@ -269,6 +271,12 @@ async fn vozes_salvar(State(m): M, body: Bytes) -> Response {
         Ok(r) => ok(r),
         Err(e) => e.into_response(),
     }
+}
+
+/// Para a janela (que só fala com /motor/...): `{"nome": "..."}`.
+async fn voz_apagar_janela(State(m): M, Json(b): Json<Value>) -> Response {
+    let nome = b.get("nome").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+    voz_apagar(State(m), CaminhoUrl(nome)).await
 }
 
 async fn voz_apagar(State(m): M, CaminhoUrl(nome): CaminhoUrl<String>) -> Response {

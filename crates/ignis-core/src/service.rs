@@ -30,6 +30,8 @@ use crate::supervisor::{self, Server};
 use crate::updates::{self, UpdateCheck};
 use crate::util::{now_millis, now_unix};
 
+#[path = "service_atualizacao.rs"]
+mod atualizacao_svc;
 #[path = "service_audio.rs"]
 mod audio_svc;
 pub use audio_svc::{AudioInfo, AudioUso};
@@ -207,6 +209,8 @@ pub struct MotorOptions {
     pub pastas_locais: Option<PastasLocais>,
     /// Manifesto de voz e transcrição alternativo (testes).
     pub audio_manifest_override: Option<crate::audio::ManifestoAudio>,
+    /// Tipo de instalação (testes); None = descobre sozinho.
+    pub instalacao_override: Option<crate::atualizador::Instalacao>,
 }
 
 /// Pastas de modelos de outros programas (Ollama, Hugging Face, LM Studio).
@@ -240,6 +244,7 @@ impl Default for MotorOptions {
             extras_motor: None,
             pastas_locais: None,
             audio_manifest_override: None,
+            instalacao_override: None,
         }
     }
 }
@@ -279,6 +284,9 @@ pub struct Motor {
     tarefas: Mutex<HashMap<String, Tarefa>>,
     session_failed: Mutex<HashSet<String>>,
     update_info: RwLock<Option<UpdateCheck>>,
+    instalacao: crate::atualizador::Instalacao,
+    /// Comando de instalação da versão nova: quem hospeda o Ignis fecha tudo e roda.
+    saida: watch::Sender<Option<crate::atualizador::Comando>>,
     api_status: RwLock<Result<u16, String>>,
     porta_tx: watch::Sender<u16>,
     mudancas: watch::Sender<u64>,
@@ -372,6 +380,8 @@ impl Motor {
             tarefas: Mutex::new(HashMap::new()),
             session_failed: Mutex::new(HashSet::new()),
             update_info: RwLock::new(None),
+            instalacao: opts.instalacao_override.clone().unwrap_or_else(crate::atualizador::detectar),
+            saida: watch::channel(None).0,
             api_status: RwLock::new(Err("iniciando".into())),
             porta_tx,
             mudancas,
@@ -598,10 +608,10 @@ impl Motor {
                 }
             }
         }
-        // 3) verificação semanal de atualizações (só se a pessoa ligou)
-        if self.settings().procurar_atualizacoes_sozinho {
+        // 3) procura versão nova uma vez por dia (a pessoa pode desligar)
+        if self.settings().procurar_atualizacoes {
             let ultima = self.estado.lock().unwrap().ultima_verificacao;
-            if now_unix().saturating_sub(ultima) > 7 * 24 * 3600 {
+            if now_unix().saturating_sub(ultima) > 24 * 3600 {
                 self.estado.lock().unwrap().ultima_verificacao = now_unix();
                 self.save_estado();
                 let me = self.clone();
@@ -2075,7 +2085,8 @@ impl Motor {
                 });
                 Ok(())
             }
-            _ => Err(MotorError::Invalido("item precisa ser \"motor\" ou \"catalogo\".".into())),
+            "app" => self.atualizar_app(info),
+            _ => Err(MotorError::Invalido("item precisa ser \"app\", \"motor\" ou \"catalogo\".".into())),
         }
     }
 
@@ -2144,6 +2155,7 @@ impl Motor {
             "tarefas": self.tarefas(),
             "avisos": self.avisos(),
             "atualizacao": self.update_info(),
+            "instalacao": self.instalacao_json(),
             "requisicoes_ativas": self.ativos(),
             "detectado": det.is_some(),
         })

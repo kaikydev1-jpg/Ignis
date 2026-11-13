@@ -29,8 +29,10 @@ pub enum Instalacao {
     },
     Rpm,
     Deb,
-    /// RPM em camada no Fedora Atomic (rpm-ostree): atualização manual.
-    RpmOstree,
+    /// RPM em camada no Fedora Atomic (rpm-ostree): instala e pede para reiniciar o computador.
+    RpmOstree {
+        pacote: String,
+    },
     /// Rodando do código ou de um jeito que não dá para atualizar sozinho.
     Manual,
 }
@@ -44,7 +46,7 @@ impl Instalacao {
             Instalacao::AppImage { .. } => "AppImage",
             Instalacao::Rpm => "Fedora (RPM)",
             Instalacao::Deb => "Ubuntu/Debian (.deb)",
-            Instalacao::RpmOstree => "Fedora Atomic (RPM em camada)",
+            Instalacao::RpmOstree { .. } => "Fedora Atomic (RPM em camada)",
             Instalacao::Manual => "instalação manual",
         }
     }
@@ -56,7 +58,7 @@ impl Instalacao {
             Instalacao::Flatpak { matsu: true, .. } => Some("Ignis-Matsu-OS.flatpak"),
             Instalacao::Flatpak { .. } => Some("Ignis-Flatpak.flatpak"),
             Instalacao::AppImage { .. } => Some("Ignis-Linux.AppImage"),
-            Instalacao::Rpm | Instalacao::RpmOstree => Some("Ignis-Fedora.rpm"),
+            Instalacao::Rpm | Instalacao::RpmOstree { .. } => Some("Ignis-Fedora.rpm"),
             Instalacao::Deb => Some("Ignis-Ubuntu-Debian.deb"),
             Instalacao::Manual => None,
         }
@@ -64,14 +66,26 @@ impl Instalacao {
 
     /// Dá para atualizar com um clique?
     pub fn automatica(&self) -> bool {
-        !matches!(self, Instalacao::RpmOstree | Instalacao::Manual)
+        !matches!(self, Instalacao::Manual)
     }
 
-    /// O que dizer quando não dá para atualizar sozinho.
-    pub fn instrucao_manual(&self, versao: &str) -> String {
+    /// No Fedora Atomic a versão nova só entra depois de reiniciar o computador.
+    pub fn precisa_reiniciar_pc(&self) -> bool {
+        matches!(self, Instalacao::RpmOstree { .. })
+    }
+
+    /// Como instalar à mão o arquivo já baixado (quando o clique não dá certo).
+    pub fn instrucao_manual(&self, versao: &str, arquivo: Option<&Path>) -> String {
+        let arq = arquivo.map(|a| a.display().to_string()).unwrap_or_else(|| self.arquivo().unwrap_or("").to_string());
         match self {
-            Instalacao::RpmOstree => format!(
-                "No Fedora Atomic com o RPM em camada, rode: sudo rpm-ostree install --force-replacefiles ./Ignis-Fedora.rpm (versão {versao}) e reinicie. Dica: o Flatpak do Ignis atualiza com um clique."
+            Instalacao::Rpm => format!("Para instalar a versão {versao} pelo terminal: sudo dnf install -y \"{arq}\""),
+            Instalacao::Deb => format!("Para instalar a versão {versao} pelo terminal: sudo apt-get install -y \"{arq}\""),
+            Instalacao::RpmOstree { pacote } => format!(
+                "Para instalar a versão {versao} pelo terminal: rpm-ostree uninstall {pacote} --install \"{arq}\" e reinicie o computador."
+            ),
+            Instalacao::Flatpak { sistema, .. } => format!(
+                "Para instalar a versão {versao} pelo terminal: flatpak install {} -y --reinstall --bundle \"{arq}\"",
+                if *sistema { "--system" } else { "--user" }
             ),
             _ => format!("Baixe a versão {versao} na página oficial: https://github.com/kaikydev1-jpg/Ignis/releases/latest"),
         }
@@ -111,7 +125,15 @@ pub fn detectar() -> Instalacao {
     };
     if dono("rpm", &["-qf"]) {
         if Path::new("/run/ostree-booted").exists() {
-            return Instalacao::RpmOstree;
+            let pacote = std::process::Command::new("rpm")
+                .args(["-qf", "--qf", "%{NAME}"])
+                .arg(&exe)
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|n| !n.is_empty() && !n.contains(char::is_whitespace))
+                .unwrap_or_else(|| "ignis".into());
+            return Instalacao::RpmOstree { pacote };
         }
         return Instalacao::Rpm;
     }
@@ -191,6 +213,10 @@ fn aspas(s: &Path) -> String {
     format!("'{}'", s.to_string_lossy().replace('\'', "'\\''"))
 }
 
+fn aspas_ps(s: &Path) -> String {
+    format!("'{}'", s.to_string_lossy().replace('\'', "''"))
+}
+
 fn tem(programa: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(programa).is_file()))
 }
@@ -200,11 +226,21 @@ pub fn comando_de_instalacao(inst: &Instalacao, arquivo: &Path, exe_atual: &Path
     let sh = |script: String| Comando { programa: "sh".into(), args: vec!["-c".into(), script] };
     match inst {
         Instalacao::Windows => Some(Comando {
-            programa: "cmd".into(),
+            programa: "powershell".into(),
             args: vec![
-                "/C".into(),
-                // espera o Ignis (e a janela) fecharem, instala em silêncio e reabre
-                format!("timeout /t 15 /nobreak >NUL & \"{}\" /S & start \"\" \"{}\"", arquivo.display(), exe_atual.display()),
+                "-NoProfile".into(),
+                "-NonInteractive".into(),
+                "-ExecutionPolicy".into(),
+                "Bypass".into(),
+                "-WindowStyle".into(),
+                "Hidden".into(),
+                "-Command".into(),
+                // espera o Ignis fechar, instala em silêncio e abre de novo
+                format!(
+                    "Wait-Process -Id {pid} -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process -Wait -FilePath {} -ArgumentList '/S'; Start-Process -FilePath {}",
+                    aspas_ps(arquivo),
+                    aspas_ps(exe_atual)
+                ),
             ],
         }),
         Instalacao::Rpm if tem("pkexec") => {
@@ -221,12 +257,16 @@ pub fn comando_de_instalacao(inst: &Instalacao, arquivo: &Path, exe_atual: &Path
                 "sh".into(),
                 "-c".into(),
                 format!(
-                    "sleep 4; flatpak install {} -y --noninteractive --reinstall {} && flatpak run {APP_ID_FLATPAK}",
+                    "sleep 4; flatpak install {} -y --noninteractive --reinstall --bundle {} && flatpak run {APP_ID_FLATPAK}",
                     if *sistema { "--system" } else { "--user" },
                     aspas(arquivo)
                 ),
             ],
         }),
+        // roda com o Ignis aberto; o sistema pede a senha e a versão nova entra ao reiniciar
+        Instalacao::RpmOstree { pacote } => {
+            Some(Comando { programa: "rpm-ostree".into(), args: vec!["uninstall".into(), pacote.clone(), "--install".into(), arquivo.to_string_lossy().into()] })
+        }
         _ => None,
     }
 }
@@ -269,8 +309,12 @@ mod tests {
         assert_eq!(Instalacao::AppImage { caminho: "/x".into() }.arquivo(), Some("Ignis-Linux.AppImage"));
         assert_eq!(Instalacao::Rpm.arquivo(), Some("Ignis-Fedora.rpm"));
         assert_eq!(Instalacao::Deb.arquivo(), Some("Ignis-Ubuntu-Debian.deb"));
-        assert!(!Instalacao::RpmOstree.automatica() && !Instalacao::Manual.automatica());
-        assert!(Instalacao::RpmOstree.instrucao_manual("0.3.0").contains("rpm-ostree"));
+        let atomic = Instalacao::RpmOstree { pacote: "ignis".into() };
+        assert!(atomic.automatica() && atomic.precisa_reiniciar_pc() && !Instalacao::Manual.automatica());
+        assert!(atomic.instrucao_manual("0.3.0", None).contains("rpm-ostree uninstall ignis --install"));
+        assert!(Instalacao::Rpm
+            .instrucao_manual("0.3.0", Some(Path::new("/d/Ignis-Fedora.rpm")))
+            .contains("dnf install -y \"/d/Ignis-Fedora.rpm\""));
     }
 
     #[test]
@@ -286,8 +330,18 @@ mod tests {
     fn comandos_por_sistema() {
         let c = comando_de_instalacao(&Instalacao::Windows, Path::new("C:\\t\\Ignis-Windows.exe"), Path::new("C:\\Ignis\\ignis.exe"), 1)
             .unwrap();
-        assert_eq!(c.programa, "cmd");
-        assert!(c.args[1].contains("/S") && c.args[1].contains("start \"\" \"C:\\Ignis\\ignis.exe\""));
+        assert_eq!(c.programa, "powershell");
+        let ps = c.args.last().unwrap();
+        assert!(
+            ps.starts_with("Wait-Process -Id 1 ")
+                && ps.contains("'C:\\t\\Ignis-Windows.exe' -ArgumentList '/S'")
+                && ps.ends_with("Start-Process -FilePath 'C:\\Ignis\\ignis.exe'"),
+            "{ps}"
+        );
+        let c =
+            comando_de_instalacao(&Instalacao::RpmOstree { pacote: "ignis".into() }, Path::new("/d/I.rpm"), Path::new("/usr/bin/ignis"), 1)
+                .unwrap();
+        assert_eq!(c.args, ["uninstall", "ignis", "--install", "/d/I.rpm"]);
         let c = comando_de_instalacao(
             &Instalacao::Flatpak { matsu: true, sistema: false },
             Path::new("/home/a/x.flatpak"),
@@ -296,7 +350,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(&c.args[..2], &["--host".to_string(), "sh".to_string()]);
-        assert!(c.args[3].contains("flatpak install --user") && c.args[3].contains("--reinstall '/home/a/x.flatpak'"), "{}", c.args[3]);
+        assert!(
+            c.args[3].contains("flatpak install --user") && c.args[3].contains("--reinstall --bundle '/home/a/x.flatpak'"),
+            "{}",
+            c.args[3]
+        );
         let c = comando_de_instalacao(
             &Instalacao::AppImage { caminho: "/home/a/O'Neil/Ignis.AppImage".into() },
             Path::new("/t"),

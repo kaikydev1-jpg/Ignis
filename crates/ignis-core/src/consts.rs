@@ -13,6 +13,8 @@ pub const API_VERSION: u32 = 1;
 pub const PORTA_PADRAO: u16 = 11470;
 /// Endereço do manifesto de atualizações (só é consultado por ação da pessoa
 /// ou se ela ligar a verificação automática).
+/// Página das versões oficiais; os arquivos de cada versão ficam em `/download/vX.Y.Z/`.
+pub const URL_RELEASES: &str = "https://github.com/kaikydev1-jpg/Ignis/releases";
 pub const URL_ATUALIZACOES: &str = "https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/atualizacoes.json";
 /// Página de downloads do aplicativo.
 pub const URL_PAGINA_RELEASES: &str = "https://github.com/kaikydev1-jpg/Ignis/releases";

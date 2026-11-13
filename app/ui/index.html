@@ -23,6 +23,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg>
         <span>Modelos</span>
       </button>
+      <button data-secao="voz">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+        <span>Voz</span>
+      </button>
       <button data-secao="motor">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
         <span>Motor</span>
@@ -54,6 +58,9 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
       </button>
     </div>
+
+    <!-- Versão nova do Ignis -->
+    <div id="faixa-att" class="faixa-att" role="status" hidden></div>
 
     <!-- Primeiro uso -->
     <section id="guia" class="guia" hidden>
@@ -151,6 +158,54 @@
       </details>
     </section>
 
+    <!-- VOZ E TRANSCRIÇÃO -->
+    <section id="sec-voz" class="secao" hidden>
+      <header class="cabecalho">
+        <h1>Voz e transcrição</h1>
+        <p>Falar um texto (com uma voz clonada, se quiser) e transformar áudio em texto, tudo neste computador. Usa a placa de vídeo (AMD, NVIDIA ou Intel) e, se ela não der conta, o processador.</p>
+      </header>
+      <section class="grupo">
+        <div class="grupo-topo">
+          <h2>Situação</h2>
+          <button class="botao primario" id="btn-voz-preparar">Preparar voz e transcrição</button>
+        </div>
+        <div class="caixa" id="voz-estado"><div class="vazio">Carregando…</div></div>
+        <p class="nota" id="voz-licenca"></p>
+      </section>
+      <section class="grupo">
+        <div class="grupo-topo">
+          <h2>Ouvir</h2>
+          <button class="botao texto" id="btn-voz-descarregar">Descarregar da memória</button>
+        </div>
+        <div class="caixa busca">
+          <div class="linha-campo">
+            <input type="text" id="voz-texto" value="Olá! Eu sou o Ignis. Esta é a minha voz, rodando aqui no seu computador." spellcheck="false">
+            <select id="voz-escolha" aria-label="Voz"><option value="">Voz padrão</option></select>
+            <button class="botao" id="btn-voz-ouvir">Ouvir</button>
+          </div>
+          <audio id="voz-audio" controls hidden></audio>
+          <p class="nota" id="voz-tempo">A primeira vez demora mais: o modelo de voz é carregado na memória.</p>
+        </div>
+      </section>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Vozes clonadas</h2></div>
+        <div class="caixa" id="voz-lista"></div>
+        <details class="mais">
+          <summary><span>Clonar uma voz</span><small>Uma gravação curta em WAV (5 a 15 segundos) e o texto falado nela</small></summary>
+          <div class="mais-corpo">
+            <div class="linha-campo"><input type="text" id="clone-nome" placeholder="Nome da voz (ex.: minha-voz)" spellcheck="false"></div>
+            <div class="linha-campo"><input type="text" id="clone-texto" placeholder="O que foi falado na gravação" spellcheck="false"></div>
+            <div class="linha-campo"><input type="file" id="clone-arquivo" accept=".wav,audio/wav"><button class="botao" id="btn-clonar">Salvar voz</button></div>
+            <p class="nota">Clone só a sua voz ou a de quem deixou. A voz fica guardada só neste computador.</p>
+          </div>
+        </details>
+      </section>
+      <section class="grupo">
+        <div class="grupo-topo"><h2>Usar em outros programas</h2></div>
+        <div class="caixa ajustes" id="voz-api"></div>
+      </section>
+    </section>
+
     <!-- MOTOR -->
     <section id="sec-motor" class="secao" hidden>
       <header class="cabecalho">
@@ -225,8 +280,9 @@
         </div>
         <div class="caixa ajustes">
           <div class="ajuste" id="att-info"><div><strong>Nenhuma verificação ainda</strong><small>O aplicativo, o motor e o catálogo atualizam separados. Nada muda sem você aceitar.</small></div></div>
+          <div class="ajuste" id="att-instalacao"></div>
           <label class="ajuste">
-            <div><strong>Procurar sozinho toda semana</strong><small>Desligado por padrão: o Ignis só se conecta quando você pede.</small></div>
+            <div><strong>Avisar quando sair versão nova</strong><small>Uma vez por dia o Ignis lê a lista pública de versões no GitHub e avisa com uma notificação. Nada sobre você é enviado e nada é instalado sem o seu clique.</small></div>
             <input type="checkbox" class="interruptor" id="cfg-att-auto">
           </label>
         </div>
