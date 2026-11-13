@@ -6,7 +6,8 @@
 **Versão oficial 0.1.0 publicada** (GitHub Releases, sem login e sem prazo):
 https://github.com/kaikydev1-jpg/Ignis/releases/latest, com arquivos por sistema
 (`Ignis-Windows.exe`, `Ignis-Fedora.rpm`, `Ignis-Flatpak.flatpak`, `Ignis-Ubuntu-Debian.deb`,
-`Ignis-Linux.AppImage`, `SHA256SUMS.txt`, `atualizacoes.json`).
+`Ignis-Linux.AppImage`, `Ignis-Matsu-OS.flatpak`, `instalar.sh`, `SHA256SUMS.txt`, `atualizacoes.json`).
+Instalador pelo terminal (`scripts/instalar.sh`): descobre o sistema, baixa a versão certa, confere o SHA-256 e instala (testado de verdade no caminho Flatpak e no download+conferência do RPM).
 Versões de teste continuam separadas: Actions → **Instaladores** (90 dias, pede login).
 Próximo passo: o criador roda o TESTE_DO_CRIADOR.md na placa real.
 
@@ -44,7 +45,7 @@ Próximo passo: o criador roda o TESTE_DO_CRIADOR.md na placa real.
   - catálogo com filtros e mini-barras de memória;
   - status com velocidade e exemplos prontos (curl/Python/JS);
   - sem menu de botão direito, zoom ou seleção solta de página;
-  - **barra de título integrada** (como VS Code/Discord): sem a barra cinza do sistema; o topo do Ignis arrasta a janela, duplo clique maximiza, botões minimizar/maximizar/fechar no jeito de cada sistema (Windows 11; no Linux segue lado, ordem e estilo do sistema: bolinhas tipo Mac, GNOME ou KDE; **Matsu OS** (sistema do criador, Fedora Atomic) é reconhecido pelo os-release e usa as cores exatas da referência dele; escolha manual em Motor).
+  - **barra de título integrada** (como VS Code/Discord): sem a barra cinza do sistema; o topo do Ignis arrasta a janela, duplo clique maximiza, botões minimizar/maximizar/fechar no jeito de cada sistema (Windows 11; no Linux segue lado, ordem e estilo do sistema: bolinhas tipo Mac, GNOME ou KDE; **Matsu OS** (sistema do criador, Fedora Atomic; o nome traz o ano: Matsu 27 OS, 28…) é reconhecido pelo os-release e usa as cores exatas da referência dele; escolha manual em Motor (sem opção Matsu, que é automática)).
 - **Placa simulada** (`crates/fake-llama-server`) e testes de ponta a ponta.
 - **`ignis-cli`**: `detectar`, `servir`, `gguf`, `ollama`, `versao`.
 - **CI** (`.github/workflows/ci.yml`): fmt, clippy `-D warnings` e testes em Linux e Windows, incluindo o llama-server oficial com modelo de 0,5 B.

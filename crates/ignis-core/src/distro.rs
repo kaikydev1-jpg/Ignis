@@ -170,6 +170,12 @@ mod tests {
         let os = parse_os_release("NAME=\"MatsuOS\"\nID=matsuos\n");
         assert!(eh_matsu(&os));
         assert_eq!(classify(&os, true), Familia::FedoraAtomic);
+        // o número do ano vem no nome: Matsu 27 OS, Matsu 28 OS…
+        for nome in ["Matsu 27 OS", "Matsu 28 OS", "matsu-27-os"] {
+            let os = parse_os_release(&format!("NAME=\"{nome}\"\nID=fedora\nVARIANT_ID=silverblue\n"));
+            assert!(eh_matsu(&os), "{nome}");
+            assert_eq!(classify(&os, true), Familia::FedoraAtomic);
+        }
         assert!(!eh_matsu(&parse_os_release(FEDORA_44)));
     }
 

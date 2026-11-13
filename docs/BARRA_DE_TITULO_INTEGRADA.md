@@ -38,7 +38,7 @@ Visual:
     - em uso: vermelha #ff5f57, amarela #febc2e, verde #28c840;
     - mouse em cima do grupo: × #4d0000, − #995700 e dois triângulos #006500 no verde;
     - janela em segundo plano: cinza #59545d no tema escuro e #c9c9cf no claro.
-  - Tenha uma opção nas configurações para escolher o estilo à mão (Automático, Windows, GNOME, KDE, Mac, Matsu OS).
+  - Tenha uma opção nas configurações para escolher o estilo à mão (Automático, Windows, GNOME, KDE, Mac).
 - O resto do app é igual em todos os sistemas.
 
 Comportamento (tem que continuar igual a uma janela normal):

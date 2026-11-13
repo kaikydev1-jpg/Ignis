@@ -54,8 +54,14 @@ Links diretos (sempre a última versão):
 | Windows 10/11 | [Ignis-Windows.exe](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Windows.exe) | Abra o arquivo. Não pede administrador. |
 | Fedora 44 | [Ignis-Fedora.rpm](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Fedora.rpm) | `sudo dnf install ./Ignis-Fedora.rpm` |
 | Fedora Atomic (Silverblue, Kinoite, Bazzite) | [Ignis-Flatpak.flatpak](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Flatpak.flatpak) | `flatpak install --user ./Ignis-Flatpak.flatpak` |
+| Matsu OS (Matsu 27 OS e próximos) | [Ignis-Matsu-OS.flatpak](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Matsu-OS.flatpak) | Abra na loja do sistema, ou `flatpak install --user ./Ignis-Matsu-OS.flatpak` |
 | Ubuntu, Debian, Mint | [Ignis-Ubuntu-Debian.deb](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Ubuntu-Debian.deb) | `sudo apt install ./Ignis-Ubuntu-Debian.deb` |
 | Outras distros | [Ignis-Linux.AppImage](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Linux.AppImage) | `chmod +x Ignis-Linux.AppImage` e abra o arquivo |
+
+**Pelo terminal (qualquer Linux):** descobre o sistema, baixa, confere e instala.
+```bash
+curl -fsSL https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/instalar.sh | bash
+```
 
 **Avisos:**
 - **Windows:** o instalador ainda não tem assinatura digital. Se aparecer "O

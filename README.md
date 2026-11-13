@@ -24,8 +24,14 @@ Versão oficial mais recente: **[página da versão](https://github.com/kaikydev
 | **Windows 10 e 11** | [Ignis-Windows.exe](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Windows.exe) | Abra o arquivo (não pede administrador) |
 | **Fedora 44** | [Ignis-Fedora.rpm](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Fedora.rpm) | `sudo dnf install ./Ignis-Fedora.rpm` |
 | **Fedora Atomic** (Silverblue, Kinoite, Bazzite, Bluefin, Aurora) | [Ignis-Flatpak.flatpak](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Flatpak.flatpak) | `flatpak install --user ./Ignis-Flatpak.flatpak` |
+| **Matsu OS** (Matsu 27 OS e próximos) | [Ignis-Matsu-OS.flatpak](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Matsu-OS.flatpak) | Abra na loja de aplicativos do sistema, ou `flatpak install --user ./Ignis-Matsu-OS.flatpak` |
 | **Ubuntu, Debian, Mint, Pop!_OS, Zorin** | [Ignis-Ubuntu-Debian.deb](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Ubuntu-Debian.deb) | `sudo apt install ./Ignis-Ubuntu-Debian.deb` |
 | **Arch, openSUSE e outras** | [Ignis-Linux.AppImage](https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/Ignis-Linux.AppImage) | `chmod +x Ignis-Linux.AppImage` e abrir (ou use o Flatpak) |
+
+**Pelo terminal, em qualquer Linux:** descobre o seu sistema, baixa a versão certa, confere e instala.
+```bash
+curl -fsSL https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/instalar.sh | bash
+```
 
 - **Windows:** se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo** (o instalador ainda não tem assinatura digital).
 - **GNOME:** o ícone perto do relógio precisa da extensão [AppIndicator](https://extensions.gnome.org/extension/615/appindicator-support/) (no Fedora: `sudo dnf install gnome-shell-extension-appindicator`). O KDE mostra sem extensão.
@@ -64,7 +70,7 @@ Cada mudança no código gera instaladores de teste automaticamente, separados d
 - **API local** em `http://127.0.0.1:11470` (só no seu computador):
   - compatível com a OpenAI: `/v1/models`, `/v1/chat/completions` (com streaming e Parar), `/v1/embeddings`;
   - rotas próprias em `/motor/*`. Contrato: [CONTRATO_VALKODE.md](CONTRATO_VALKODE.md).
-- **Janela:** barra de título integrada, com os botões no jeito de cada sistema (Windows 11; no Linux, bolinhas estilo Mac, GNOME ou KDE, conforme o seu); temas claro e escuro.
+- **Janela:** barra de título integrada, com os botões no jeito de cada sistema (Windows 11; no Linux, bolinhas estilo Mac, GNOME ou KDE, conforme o seu; no Matsu OS, as cores exatas do sistema); temas claro e escuro.
 - **Leve em repouso:** ≈60 MB de RAM e ≈0% de processador sem modelo carregado.
 - **Sem telemetria.** Só se conecta ao GitHub (motores) e ao Hugging Face (modelos), por ação sua.
 

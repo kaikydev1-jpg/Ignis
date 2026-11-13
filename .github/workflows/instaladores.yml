@@ -175,6 +175,10 @@ jobs:
           um '*.deb'         Ignis-Ubuntu-Debian.deb
           um '*.AppImage'    Ignis-Linux.AppImage
           um 'atualizacoes.json' atualizacoes.json
+          # Matsu OS: o mesmo Flatpak, já reconhece o sistema e abre com o visual dele
+          cp release/Ignis-Flatpak.flatpak release/Ignis-Matsu-OS.flatpak
+          # instalador pelo terminal (descobre o sistema e baixa a versão certa)
+          cp scripts/instalar.sh release/instalar.sh
           (cd release && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
           sed -e "s/{{VERSAO}}/$VERSAO/g" -e "s/{{LLAMA}}/$LLAMA/g" .github/release/notas.md > notas.md
       - name: Publicar

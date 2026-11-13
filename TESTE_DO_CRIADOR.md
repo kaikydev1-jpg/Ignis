@@ -20,6 +20,7 @@ Baixe na versão oficial: https://github.com/kaikydev1-jpg/Ignis/releases/latest
 | Fedora Atomic (Silverblue/Kinoite/Bazzite) | `flatpak install --user ./Ignis-Flatpak.flatpak` (recomendado) | Instala sem reiniciar. Abra pelo menu de aplicativos. |
 | Fedora Atomic, alternativa | `sudo rpm-ostree install ./Ignis-Fedora.rpm` e reiniciar | Funciona como no Fedora normal (e permite ROCm). |
 | Outras distros | `chmod +x Ignis-Linux.AppImage` e abrir | Abre sem instalar nada (não precisa de libfuse2). |
+| **Matsu OS** | `curl -fsSL https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/instalar.sh \| bash` | Mostra "Sistema: Matsu 27 OS", baixa o `Ignis-Matsu-OS.flatpak`, confere o SHA-256 e instala. Também dá para abrir o arquivo na loja do sistema. |
 
 **GNOME (Fedora Workstation/Silverblue):** o ícone perto do relógio precisa da
 extensão AppIndicator.
@@ -39,7 +40,7 @@ extensão AppIndicator.
     - mouse em cima: ×, − e os dois triângulos;
     - em segundo plano: cinza (`#59545d` no escuro, `#c9c9cf` no claro).
 
-    Se não reconhecer, escolha "Matsu OS" em **Motor → Botões da janela** e me mande a saída de `cat /etc/os-release`.
+    Se não reconhecer, me mande a saída de `cat /etc/os-release`.
   - Se não ficar igual ao do seu sistema: escolha em **Motor → Botões da janela** e me mande a saída de
     `gsettings get org.gnome.desktop.wm.preferences button-layout` e `gsettings get org.gnome.desktop.interface gtk-theme`.
 - Teste da barra:

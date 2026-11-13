@@ -1,5 +1,11 @@
 **Ignis {{VERSAO}}**: motor de IA local, leve, para Windows e Linux. Roda modelos de IA no seu computador com a melhor aceleração da sua placa (AMD, NVIDIA, Intel ou só o processador) e atende outros programas por uma porta local compatível com a API da OpenAI.
 
+## Instalar pelo terminal (qualquer Linux)
+Descobre o seu sistema (Matsu OS, Fedora, Fedora Atomic, Ubuntu, Debian, Mint…), baixa a versão certa, confere o SHA-256 e instala:
+```bash
+curl -fsSL https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/instalar.sh | bash
+```
+
 ## Baixe para o seu sistema
 
 ### Windows 10 e 11
@@ -19,6 +25,15 @@ sudo dnf install ./Ignis-Fedora.rpm
 flatpak install --user ./Ignis-Flatpak.flatpak
 ```
 Instala sem reiniciar. Na primeira vez, baixa a base do GNOME pelo Flathub. Serve também para qualquer distro com Flatpak.
+
+### Matsu OS (Matsu 27 OS e as versões dos próximos anos)
+**[Ignis-Matsu-OS.flatpak](https://github.com/kaikydev1-jpg/Ignis/releases/download/v{{VERSAO}}/Ignis-Matsu-OS.flatpak)**
+- Já abre com o visual do Matsu OS: as bolinhas com as cores do sistema, o cinza em segundo plano e os símbolos ao passar o mouse.
+- Abra o arquivo baixado na loja de aplicativos do sistema, ou pelo terminal:
+```bash
+flatpak install --user ./Ignis-Matsu-OS.flatpak
+```
+- Ou deixe o instalador fazer tudo: `curl -fsSL https://github.com/kaikydev1-jpg/Ignis/releases/latest/download/instalar.sh | bash`
 
 ### Ubuntu, Debian, Linux Mint, Pop!_OS, Zorin
 **[Ignis-Ubuntu-Debian.deb](https://github.com/kaikydev1-jpg/Ignis/releases/download/v{{VERSAO}}/Ignis-Ubuntu-Debian.deb)**
@@ -47,7 +62,7 @@ Fechar a janela deixa o Ignis perto do relógio. Para encerrar, use **Sair** no 
 - **Modelos:** catálogo filtrado pela sua placa e **qualquer modelo GGUF do Hugging Face**, inclusive os que pedem aceite dos termos (com a sua conta) e os que entendem imagem e áudio. **Não precisa do Ollama** (dá para trazer modelos de lá, se quiser).
 - **Memória:** calcula quanto do modelo cabe na placa, avisa antes quando não cabe e libera a placa depois de 10 minutos parado.
 - **API local** compatível com a OpenAI: streaming, botão Parar, embeddings e ferramentas. Só responde neste computador.
-- **Janela:** barra de título integrada, com os botões no jeito de cada sistema (Windows 11; no Linux, bolinhas estilo Mac, GNOME ou KDE, conforme o seu); temas claro e escuro.
+- **Janela:** barra de título integrada, com os botões no jeito de cada sistema (Windows 11; no Linux, bolinhas estilo Mac, GNOME ou KDE, conforme o seu; no Matsu OS, as cores exatas do sistema); temas claro e escuro.
 - **Leve:** cerca de 60 MB de memória e processador perto de 0% quando parado.
 - **Privado:** sem telemetria. Só se conecta ao GitHub (motores) e ao Hugging Face (modelos), quando você pede.
 
