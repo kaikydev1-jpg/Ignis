@@ -131,6 +131,7 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/motor/modelos/cancelar", post(cancelar))
         .route("/motor/modelos/remover", post(remover))
         .route("/motor/modelos/ollama", get(ollama_listar))
+        .route("/motor/modelos/computador", get(computador_listar))
         .route("/motor/modelos/importar", post(importar))
         .route("/motor/modelos/carregar", post(carregar))
         .route("/motor/modelos/descarregar", post(descarregar))
@@ -206,12 +207,13 @@ async fn embeddings(State(m): M, body: Bytes) -> Response {
 struct Timings {
     prompt_per_second: Option<f64>,
     predicted_per_second: Option<f64>,
+    predicted_n: Option<u64>,
 }
 
 fn sniff_timings(m: &Motor, v: &Value) {
     if let Some(t) = v.get("timings") {
         if let Ok(t) = serde_json::from_value::<Timings>(t.clone()) {
-            m.record_speed(t.prompt_per_second, t.predicted_per_second);
+            m.record_speed(t.prompt_per_second, t.predicted_per_second, t.predicted_n);
         }
     }
 }
@@ -361,6 +363,16 @@ fn recursos_para(m: &Motor) -> Recursos {
     }
 }
 
+/// Velocidade já medida deste modelo em cada motor, da mais rápida para a mais lenta.
+fn velocidades_do_modelo(m: &Motor, id: &str) -> Vec<Value> {
+    let nomes: std::collections::HashMap<String, String> = m.candidates().into_iter().map(|c| (c.variante, c.nome)).collect();
+    let mut v: Vec<(String, f64)> = m.medidas_do_modelo(id).into_iter().collect();
+    v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    v.into_iter()
+        .map(|(variante, tps)| json!({"variante": variante, "nome": nomes.get(&variante).cloned().unwrap_or(variante.clone()), "geracao_tps": tps}))
+        .collect()
+}
+
 async fn modelos(State(m): M) -> Response {
     let rec = recursos_para(&m);
     let ctx = m.settings().contexto_preferido;
@@ -380,6 +392,7 @@ async fn modelos(State(m): M) -> Response {
                 "memoria_placa_mb": plano.memoria_placa_mb, "memoria_ram_mb": plano.memoria_ram_mb,
                 "visao": x.mmproj.is_some(),
                 "tipo": if x.embeddings { "embeddings" } else { "conversa" },
+                "velocidades": velocidades_do_modelo(&m, &x.id),
             })
         })
         .collect();
@@ -445,6 +458,13 @@ async fn ollama_listar(State(m): M) -> Response {
     let lista = tokio::task::spawn_blocking(move || mm.ollama_scan()).await.unwrap_or_default();
     let pastas: Vec<String> = crate::ollama::default_dirs().iter().map(|p| p.display().to_string()).collect();
     ok(json!({"modelos": lista, "pastas_procuradas": pastas}))
+}
+
+/// Modelos GGUF que outros programas já baixaram (Ollama, Hugging Face, LM Studio).
+async fn computador_listar(State(m): M) -> Response {
+    let mm = m.clone();
+    let lista = tokio::task::spawn_blocking(move || mm.modelos_no_computador()).await.unwrap_or_default();
+    ok(json!({"modelos": lista}))
 }
 
 #[derive(Deserialize)]
@@ -521,9 +541,20 @@ async fn preparar(State(m): M) -> Response {
     }
 }
 
-async fn testar(State(m): M) -> Response {
-    m.run_benchmark();
-    ok(json!({"ok": true}))
+/// `POST /motor/testar`: teste de velocidade geral (modelo pequeno), ou com um
+/// modelo instalado: `{"modelo": "qwen3-8b"}`.
+async fn testar(State(m): M, body: Bytes) -> Response {
+    let modelo = serde_json::from_slice::<Value>(&body).ok().and_then(|v| v.get("modelo").and_then(|x| x.as_str()).map(String::from));
+    match modelo {
+        Some(id) => match m.run_benchmark_model(&id) {
+            Ok(()) => ok(json!({"ok": true, "modelo": id})),
+            Err(e) => e.into_response(),
+        },
+        None => {
+            m.run_benchmark();
+            ok(json!({"ok": true}))
+        }
+    }
 }
 
 async fn detectar(State(m): M) -> Response {

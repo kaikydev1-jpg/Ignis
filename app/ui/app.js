@@ -198,7 +198,8 @@ const ICONES = {
   ollama: '<svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>',
 };
 const NOME_FABRICANTE = { amd: "AMD", nvidia: "NVIDIA", intel: "Intel" };
-const ORIGEM = { "catalogo": "do catálogo do Ignis", "hugging-face": "do Hugging Face", "ollama-referencia": "lido da pasta do Ollama", "ollama-copia": "copiado do Ollama", "arquivo": "arquivo seu" };
+const ORIGEM = { "catalogo": "do catálogo do Ignis", "hugging-face": "do Hugging Face", "ollama-referencia": "lido da pasta do Ollama", "ollama-copia": "copiado do Ollama", "arquivo": "arquivo seu", "no-computador": "já estava no computador" };
+const origemTexto = (o) => o.tipo === "no-computador" && o.fonte ? `já estava no computador (${o.fonte})` : (ORIGEM[o.tipo] || o.tipo);
 const TIPO = { conversa: "Conversa", codigo: "Código", embeddings: "Busca por significado" };
 
 // ---------- navegação ----------
@@ -247,6 +248,8 @@ function renderGuia() {
     if (t && t.total) p2extra = `<div class="progresso barra-mini"><div style="width:${(100 * t.baixado / t.total).toFixed(1)}%"></div></div>`;
   } else if (motores && !preparado) {
     p2sub += ` Total: ${tamanho(motores.preparacao.total)}.`;
+    const mt = motores.preparacao.modelo_teste;
+    if (mt && mt.ja_no_computador) p2sub += ` O modelo para o teste (${esc(mt.nome)}) já está no computador (${esc(mt.ja_no_computador)}): não precisa baixar.`;
   }
   const passos = [
     { feito: s.detectado, titulo: "Conhecer a sua placa", sub: placa, botao: "" },
@@ -329,7 +332,7 @@ function renderPlaca() {
       <div class="numero">${tps(r.geracao_tps)}<small>tokens/s, lendo ${tps(r.leitura_tps)}</small></div></div>`;
   }).join("") : `<div class="vazio"><strong>O teste ainda não foi feito.</strong>Ele roda sozinho quando você prepara o Ignis.</div>`);
   $("teste-nota").textContent = !t.feito ? "" :
-    (t.atual ? `Velocidade escrevendo a resposta, em tokens por segundo (um token é mais ou menos ¾ de palavra). Testado em ${hora(t.quando)}.`
+    (t.atual ? `Velocidade escrevendo a resposta, em tokens por segundo (um token é mais ou menos ¾ de palavra). Testado em ${hora(t.quando)}${t.modelo_nome ? ` com ${t.modelo_nome}` : ""}, um modelo pequeno: para modelos maiores que cabem na placa, o Ignis usa a placa. Para medir com o seu modelo, use "Testar velocidade" em Modelos.`
       : `A placa ou o driver mudou desde o último teste (${hora(t.quando)}). Teste de novo para escolher o melhor motor.`);
   $("btn-testar").disabled = s.fase === "testando" || s.fase === "preparando" || !s.detectado;
 }
@@ -381,9 +384,11 @@ function renderModelos() {
     const cor = { "placa": "ok", "dividido": "alerta", "processador": "alerta", "nao-cabe": "erro" }[m.encaixe] || "";
     return `<div class="linha"><span class="icone-linha">${ICONES[tipo]}</span>
       <div><div class="titulo">${esc(m.nome)} <span class="etiquetas" style="display:inline-flex">${etiquetas}</span></div>
-        <div class="sub">${tamanho(m.tamanho)}, ${esc(ORIGEM[m.origem.tipo] || m.origem.tipo)}. <span class="cabe enc-${m.encaixe}" style="color:var(--${cor || "suave"})">${esc(m.rotulo)}</span></div></div>
+        <div class="sub">${tamanho(m.tamanho)}, ${esc(origemTexto(m.origem))}. <span class="cabe enc-${m.encaixe}" style="color:var(--${cor || "suave"})">${esc(m.rotulo)}</span></div>
+        ${m.velocidades && m.velocidades.length ? `<div class="sub">Velocidade neste modelo: ${m.velocidades.map((v, i) => `${i === 0 ? "<strong>" : ""}${esc(v.nome)} ${tps(v.geracao_tps)}${i === 0 ? "</strong>" : ""}`).join(" · ")} tokens/s</div>` : ""}</div>
       <div class="lado">
         ${m.carregado ? '<button class="botao" data-acao="descarregar">Descarregar</button>' : `<button class="botao" data-acao="carregar" data-id="${esc(m.id)}" ${m.existe ? "" : "disabled"}>Carregar</button>`}
+        ${m.embeddings || !m.existe ? "" : `<button class="botao texto" data-acao="testar-modelo" data-id="${esc(m.id)}" title="Mede todos os motores com este modelo. O mais rápido passa a ser usado para ele.">Testar velocidade</button>`}
         ${m.padrao || m.embeddings ? "" : `<button class="botao texto" data-acao="padrao" data-id="${esc(m.id)}">Usar como padrão</button>`}
         <button class="botao texto perigo" data-acao="remover" data-id="${esc(m.id)}" data-nome="${esc(m.nome)}" data-origem="${esc(m.origem.tipo)}">Remover</button>
       </div></div>`;
@@ -571,7 +576,7 @@ function renderStatus() {
   const ponto = !s.api.rodando ? "erro" : s.pausado ? "alerta" : trabalhando ? "trabalhando" : "ok";
   const titulo = !s.api.rodando ? "A API está parada" : s.pausado ? "Pausado" : s.modelo ? "Rodando " + esc(s.modelo.nome) : { carregando: "Carregando modelo", testando: "Testando motores", preparando: "Preparando" }[s.fase] || "Pronto, sem modelo carregado";
   const sub = s.api.erro ? esc(s.api.erro) : s.pausado ? "Novos pedidos são recusados até você retomar. A placa está livre." :
-    s.modelo ? `No motor ${esc(s.motor.nome)}, ${s.motor.backend === "cpu" || s.modelo.camadas_na_placa === 0 ? "rodando no processador" : s.modelo.todas_na_placa ? "todo na placa" : s.modelo.camadas_na_placa + " camadas na placa"}.` :
+    s.modelo ? `No motor ${esc(s.motor.nome)}, ${s.motor.backend === "cpu" || s.modelo.camadas_na_placa === 0 ? "rodando no processador" : s.modelo.todas_na_placa ? "todo na placa" : s.modelo.camadas_na_placa + " camadas na placa"}${s.modelo.motivo_motor ? ` (escolhido porque ${esc(s.modelo.motivo_motor)})` : ""}.${s.ultimo_carregamento && s.ultimo_carregamento.ok && s.ultimo_carregamento.modelo_id === s.modelo.id ? ` Carregou em ${tps(s.ultimo_carregamento.segundos_total)} s.` : ""}` :
     esc(s.fase_texto || "O modelo carrega sozinho no primeiro pedido.");
   let barra = "";
   if (s.modelo && s.placa && s.motor.backend !== "cpu") {
@@ -612,13 +617,14 @@ $("btn-pasta-modelos").addEventListener("click", () => tauri && tauri.invoke("ab
 
 // ---------- Ollama e arquivo ----------
 async function procurarOllama() {
-  const r = await api("GET", "/motor/modelos/ollama");
+  const r = await api("GET", "/motor/modelos/computador");
   $("ollama-lista").hidden = r.modelos.length === 0;
-  $("ollama-nota").textContent = r.modelos.length ? "" : "Nenhum modelo do Ollama encontrado. Pastas procuradas: " + r.pastas_procuradas.join(", ");
+  $("ollama-nota").textContent = r.modelos.length ? "" : "Nenhum modelo novo encontrado nas pastas do Ollama, do Hugging Face e do LM Studio.";
   pinta($("ollama-lista"), r.modelos.map((m) => `<div class="linha"><span class="icone-linha">${ICONES.ollama}</span>
-    <div><div class="titulo">${esc(m.referencia)}</div><div class="sub">${tamanho(m.tamanho)}</div></div>
-    <div class="lado">${m.ja_importado ? '<span class="etiqueta ok">Já está no Ignis</span>' :
-      `<button class="botao" data-acao="ollama" data-modo="usar" data-ref="${esc(m.referencia)}">Usar daqui</button><button class="botao texto" data-acao="ollama" data-modo="copiar" data-ref="${esc(m.referencia)}">Copiar</button>`}</div></div>`).join(""));
+    <div><div class="titulo">${esc(m.nome)}</div><div class="sub">${tamanho(m.tamanho)} · <span class="etiqueta">${esc({ ollama: "Ollama", "hugging-face": "Hugging Face", "lm-studio": "LM Studio" }[m.fonte] || m.fonte)}</span></div></div>
+    <div class="lado">${m.fonte === "ollama"
+      ? `<button class="botao" data-acao="ollama" data-modo="usar" data-ref="${esc(m.nome)}">Usar daqui</button><button class="botao texto" data-acao="ollama" data-modo="copiar" data-ref="${esc(m.nome)}">Copiar</button>`
+      : `<button class="botao" data-acao="usar-local" data-caminho="${esc(m.caminho)}">Usar daqui</button>`}</div></div>`).join(""));
 }
 $("btn-ollama").addEventListener("click", (e) => acao(e.target, procurarOllama));
 $("btn-arquivo").addEventListener("click", (e) => acao(e.target, async () => {
@@ -653,11 +659,13 @@ document.addEventListener("click", async (e) => {
     case "descarregar": return acao(b, () => api("POST", "/motor/modelos/descarregar"));
     case "padrao": return acao(b, () => api("POST", "/motor/modelos/padrao", { id }));
     case "remover": {
-      const ref = b.dataset.origem === "ollama-referencia" || b.dataset.origem === "arquivo";
+      const ref = ["ollama-referencia", "arquivo", "no-computador"].includes(b.dataset.origem);
       if (!confirm(ref ? `Tirar "${b.dataset.nome}" da lista? O arquivo original continua onde está.` : `Apagar "${b.dataset.nome}" do disco?`)) return;
       return acao(b, async () => { const r = await api("POST", "/motor/modelos/remover", { id }); mensagem(r.mensagem, "info"); });
     }
     case "ollama": return acao(b, async () => { await api("POST", "/motor/modelos/importar", { referencia: b.dataset.ref, modo: b.dataset.modo }); await procurarOllama(); });
+    case "usar-local": return acao(b, async () => { await api("POST", "/motor/modelos/importar", { caminho: b.dataset.caminho }); await procurarOllama(); });
+    case "testar-modelo": return acao(b, async () => { await api("POST", "/motor/testar", { modelo: id }); mensagem("Testando os motores com este modelo… O resultado aparece aqui e nos avisos.", "info"); });
     case "pausar": return acao(b, () => api("POST", "/motor/pausar"));
     case "retomar": return acao(b, () => api("POST", "/motor/retomar"));
     case "parar": return acao(b, () => api("POST", "/motor/parar", {}));

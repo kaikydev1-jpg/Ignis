@@ -20,6 +20,8 @@ pub enum Origem {
     Arquivo,
     /// Baixado de um repositório qualquer do Hugging Face.
     HuggingFace { repo: String, arquivo: String, revisao: String },
+    /// Já estava no computador (baixado pelo Ollama, Hugging Face ou LM Studio): lido no lugar.
+    NoComputador { fonte: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

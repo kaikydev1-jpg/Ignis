@@ -227,6 +227,9 @@ h3 { font-size: 14.5px; font-weight: 650; margin: 18px 0 4px; }
 .linha .titulo { font-weight: 600; }
 .linha .sub { color: var(--suave); font-size: 13px; margin-top: 1px; }
 .linha .lado { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+/* modelos instalados: as ações vão embaixo do texto, para sobrar espaço para os detalhes */
+#instalados .linha { grid-template-columns: auto 1fr; }
+#instalados .linha .lado { grid-column: 2; justify-content: flex-start; margin-top: 4px; }
 .icone-linha { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--painel-2); color: var(--suave); }
 .icone-linha svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .vazio { padding: 22px 18px; color: var(--suave); }

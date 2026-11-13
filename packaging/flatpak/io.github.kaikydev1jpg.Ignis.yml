@@ -18,6 +18,9 @@ finish-args:
   - --filesystem=xdg-run/tray-icon:create       # imagem do ícone para o painel
   - --filesystem=xdg-config/autostart:create    # "abrir com o computador"
   - --filesystem=~/.ollama:ro                   # importar do Ollama (só leitura)
+  - --filesystem=~/.cache/huggingface:ro        # modelos já baixados pelo Hugging Face (só leitura)
+  - --filesystem=~/.lmstudio/models:ro          # modelos do LM Studio (só leitura)
+  - --filesystem=~/.cache/lm-studio:ro          # LM Studio, pasta antiga (só leitura)
 modules:
   - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
   - name: ignis

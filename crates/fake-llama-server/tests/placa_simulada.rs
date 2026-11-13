@@ -432,3 +432,95 @@ async fn troca_de_porta_sem_reiniciar() {
     assert_eq!(m.api_status(), Ok(nova));
     m.shutdown_all().await;
 }
+
+/// Modelo de teste "grande": o mesmo GGUF com bytes a mais no fim (como os dados dos tensores).
+fn modelo_grande(dir: &std::path::Path, nome: &str, vezes: usize) -> std::path::PathBuf {
+    let p = modelo_gguf(dir, nome, false);
+    let tam = std::fs::metadata(&p).unwrap().len() as usize;
+    let mut f = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
+    std::io::Write::write_all(&mut f, &vec![0u8; tam * vezes]).unwrap();
+    p
+}
+
+/// Relatório do Valkode (RX 580): no teste com o modelo pequeno o processador
+/// ganhou, mas para um modelo grande que cabe na placa a placa é bem mais rápida.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn modelo_grande_que_cabe_vai_para_a_placa_e_o_ignis_aprende_com_o_uso() {
+    let amb = ambiente(Opcoes { motores: vec![("sim-vulkan", cfg(37.5)), ("sim-cpu", cfg(68.2))], ..Default::default() });
+    let m = &amb.motor;
+    m.start_background();
+    let pequeno = m.import_file(&modelo_gguf(amb.dir.path(), "pequeno", false)).unwrap();
+    m.run_benchmark();
+    esperar("teste terminar", Duration::from_secs(60), || m.bench().is_some() && !m.bench_running()).await;
+    assert_eq!(m.bench().unwrap().ordem, vec!["sim-cpu", "sim-vulkan"], "no teste pequeno o processador ganha");
+
+    // modelo grande que cabe na placa: vai para a placa
+    let grande = m.import_file(&modelo_grande(amb.dir.path(), "grande", 60)).unwrap();
+    let info = m.ensure_loaded(&grande).await.unwrap();
+    assert_eq!(info.variante, "sim-vulkan");
+    assert_eq!(info.motivo, "o modelo cabe na placa");
+    let st = m.status_json();
+    assert_eq!(st["modelo"]["motivo_motor"], "o modelo cabe na placa");
+    let ult = &st["ultimo_carregamento"];
+    assert_eq!(ult["ok"], json!(true));
+    assert_eq!(ult["tentativas"][0]["variante"], "sim-vulkan");
+    assert!(ult["segundos_total"].as_f64().unwrap() >= 0.0);
+
+    // o modelo pequeno continua seguindo o teste
+    let info = m.ensure_loaded(&pequeno).await.unwrap();
+    assert_eq!((info.variante.as_str(), info.motivo.as_str()), ("sim-cpu", "foi o mais rápido no teste de velocidade"));
+
+    // uso real: a velocidade de cada motor com o modelo grande fica anotada
+    let base = subir_api(m).await;
+    let c = cliente();
+    let conversar = || async {
+        let r: Value = c
+            .post(format!("{base}/v1/chat/completions"))
+            .json(&json!({"model": grande, "max_tokens": 20, "messages": [{"role": "user", "content": "oi"}]}))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(r["choices"][0]["message"]["role"], "assistant");
+    };
+    conversar().await;
+    m.force_engine(Some("sim-cpu".into())).unwrap();
+    conversar().await;
+    m.force_engine(None).unwrap();
+    let med = m.medidas_do_modelo(&grande);
+    assert_eq!(med.get("sim-vulkan"), Some(&37.5), "{med:?}");
+    assert_eq!(med.get("sim-cpu"), Some(&68.2), "{med:?}");
+    // com as duas medidas, vale o mais rápido medido (aqui, na placa simulada, o processador)
+    m.unload().await;
+    let info = m.ensure_loaded(&grande).await.unwrap();
+    assert_eq!((info.variante.as_str(), info.motivo.as_str()), ("sim-cpu", "foi o mais rápido medido com este modelo"));
+    let lista: Value = c.get(format!("{base}/motor/modelos")).send().await.unwrap().json().await.unwrap();
+    let g = lista["instalados"].as_array().unwrap().iter().find(|x| x["id"] == json!(grande)).unwrap().clone();
+    assert_eq!(g["velocidades"][0]["variante"], "sim-cpu");
+    m.shutdown_all().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn testar_com_o_proprio_modelo() {
+    let amb = ambiente(Opcoes { motores: vec![("sim-vulkan", cfg(16.1)), ("sim-cpu", cfg(8.1))], ..Default::default() });
+    let m = &amb.motor;
+    m.start_background();
+    let grande = m.import_file(&modelo_grande(amb.dir.path(), "grande", 60)).unwrap();
+    let base = subir_api(m).await;
+    let c = cliente();
+    let r = c.post(format!("{base}/motor/testar")).json(&json!({"modelo": grande})).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    esperar("teste com o modelo", Duration::from_secs(60), || m.medidas_do_modelo(&grande).len() == 2 && !m.bench_running()).await;
+    let med = m.medidas_do_modelo(&grande);
+    assert_eq!((med["sim-vulkan"], med["sim-cpu"]), (16.1, 8.1));
+    assert!(avisos_texto(m).contains("O Ignis vai usar ele para este modelo"));
+    let info = m.ensure_loaded(&grande).await.unwrap();
+    assert_eq!((info.variante.as_str(), info.motivo.as_str()), ("sim-vulkan", "foi o mais rápido medido com este modelo"));
+    // modelo de embeddings não tem teste de velocidade
+    let emb = m.import_file(&modelo_gguf(amb.dir.path(), "emb", true)).unwrap();
+    let r = c.post(format!("{base}/motor/testar")).json(&json!({"modelo": emb})).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 400);
+    m.shutdown_all().await;
+}

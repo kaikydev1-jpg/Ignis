@@ -113,6 +113,7 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
             manifest_override: Some(manifest.clone()),
             auto_teste: false,
             extras_motor: None,
+            pastas_locais: Some(Default::default()),
         },
     );
     motor.start_background();

@@ -56,6 +56,12 @@ pub struct Velocidade {
     pub quando: u64,
 }
 
+/// Maior modelo usado no teste de velocidade geral.
+const TAMANHO_MAX_TESTE: u64 = 2_200_000_000;
+
+/// Respostas mais curtas que isso não entram na conta de velocidade do modelo.
+const MIN_TOKENS_MEDIDA: u64 = 16;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TesteSalvo {
     pub fingerprint: String,
@@ -63,6 +69,23 @@ pub struct TesteSalvo {
     pub quando: u64,
     pub resultados: Vec<BenchResult>,
     pub ordem: Vec<String>,
+    /// Tamanho do modelo usado no teste: o teste só vale para modelos parecidos.
+    #[serde(default)]
+    pub tamanho_modelo: Option<u64>,
+    #[serde(default)]
+    pub modelo_nome: Option<String>,
+}
+
+/// Velocidades medidas com um modelo específico, por motor (uso real ou teste com o modelo).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MedidasModelo {
+    pub fingerprint: String,
+    /// tokens/s escrevendo, por variante.
+    pub por_motor: HashMap<String, f64>,
+    pub quando: u64,
+    /// Resultado completo do último "Testar com este modelo".
+    pub teste: Option<Vec<BenchResult>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -71,6 +94,8 @@ pub struct EstadoPersistido {
     pub teste: Option<TesteSalvo>,
     pub falhas: HashMap<String, u32>,
     pub ultima_verificacao: u64,
+    /// Velocidade de cada modelo em cada motor.
+    pub medidas: HashMap<String, MedidasModelo>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,6 +109,8 @@ pub struct CarregadoInfo {
     pub plano: Plano,
     pub embeddings: bool,
     pub desde: u64,
+    /// Por que este motor foi escolhido para este modelo.
+    pub motivo: String,
 }
 
 struct Loaded {
@@ -169,6 +196,26 @@ pub struct MotorOptions {
     pub auto_teste: bool,
     /// Arquivos copiados para cada pasta de motor (Windows: DLLs do Visual C++).
     pub extras_motor: Option<PathBuf>,
+    /// Onde procurar modelos já baixados por outros programas (None = pastas do sistema).
+    pub pastas_locais: Option<PastasLocais>,
+}
+
+/// Pastas de modelos de outros programas (Ollama, Hugging Face, LM Studio).
+#[derive(Debug, Clone, Default)]
+pub struct PastasLocais {
+    pub ollama: Vec<PathBuf>,
+    pub hugging_face: Option<PathBuf>,
+    pub lm_studio: Vec<PathBuf>,
+}
+
+impl PastasLocais {
+    pub fn do_sistema() -> Self {
+        Self {
+            ollama: crate::ollama::default_dirs(),
+            hugging_face: crate::locais::pasta_hugging_face(),
+            lm_studio: crate::locais::pastas_lm_studio(),
+        }
+    }
 }
 
 impl Default for MotorOptions {
@@ -177,11 +224,12 @@ impl Default for MotorOptions {
             detection_override: None,
             tick: Duration::from_secs(1),
             launcher: Launcher::detect(),
-            load_timeout: Duration::from_secs(180),
+            load_timeout: Duration::from_secs(600),
             catalog_override: None,
             manifest_override: None,
             auto_teste: true,
             extras_motor: None,
+            pastas_locais: None,
         }
     }
 }
@@ -196,6 +244,7 @@ pub struct Motor {
     store: EngineStore,
     detection: RwLock<Option<Detection>>,
     detection_override: Option<Detection>,
+    pastas_locais: Option<PastasLocais>,
     estado: Mutex<EstadoPersistido>,
     registry: Mutex<Registry>,
     loaded: tokio::sync::Mutex<Option<Loaded>>,
@@ -204,6 +253,8 @@ pub struct Motor {
     paused: AtomicBool,
     avisos: Mutex<VecDeque<Aviso>>,
     velocidade: RwLock<Option<Velocidade>>,
+    /// Quanto tempo levou o último carregamento, etapa por etapa.
+    ultimo_carregamento: RwLock<Option<Value>>,
     last_activity: AtomicU64,
     ativos: AtomicUsize,
     requests: Mutex<HashMap<u64, CancellationToken>>,
@@ -280,6 +331,7 @@ impl Motor {
             catalog: RwLock::new(catalog),
             detection: RwLock::new(opts.detection_override.clone()),
             detection_override: opts.detection_override,
+            pastas_locais: opts.pastas_locais,
             estado: Mutex::new(estado),
             registry: Mutex::new(registry),
             loaded: tokio::sync::Mutex::new(None),
@@ -288,6 +340,7 @@ impl Motor {
             paused: AtomicBool::new(false),
             avisos: Mutex::new(VecDeque::new()),
             velocidade: RwLock::new(None),
+            ultimo_carregamento: RwLock::new(None),
             last_activity: AtomicU64::new(now_millis()),
             ativos: AtomicUsize::new(0),
             requests: Mutex::new(HashMap::new()),
@@ -626,6 +679,67 @@ impl Motor {
         v.into_iter().map(|(c, e, _)| (c, e)).collect()
     }
 
+    /// Velocidades já medidas com este modelo nesta máquina (vazio se a placa mudou).
+    pub fn medidas_do_modelo(&self, model_id: &str) -> HashMap<String, f64> {
+        let Some(det) = self.detection() else { return HashMap::new() };
+        let fp = det.fingerprint();
+        self.estado.lock().unwrap().medidas.get(model_id).filter(|m| m.fingerprint == fp).map(|m| m.por_motor.clone()).unwrap_or_default()
+    }
+
+    /// Ordem dos motores para um modelo específico (veja `escolha`): a placa vem
+    /// antes quando o modelo cabe nela, mesmo que o teste pequeno tenha dado o
+    /// processador; medidas com o próprio modelo valem mais que tudo.
+    pub fn engine_order_for(&self, model: &InstalledModel, det: &Detection) -> (Vec<(Candidate, PathBuf)>, crate::escolha::Motivo) {
+        let base = self.engine_order();
+        let s = self.settings();
+        let teste = if self.bench_is_current(det) { self.bench() } else { None };
+        let failed = self.session_failed.lock().unwrap().clone();
+        let principal = det.principal().cloned();
+        let shape = model.shape();
+        let opcoes: Vec<crate::escolha::Opcao> = base
+            .iter()
+            .map(|(c, _)| {
+                let pos = match &teste {
+                    Some(t) => t.ordem.iter().position(|x| *x == c.variante).map(|p| p as u32).unwrap_or(2000),
+                    None => c.backend.prioridade() as u32,
+                };
+                let usa_placa = c.backend.usa_placa() && principal.is_some();
+                let fracao_na_placa = if !usa_placa {
+                    0.0
+                } else if c.backend == Backend::Proprio {
+                    1.0
+                } else {
+                    let rec = Recursos {
+                        usa_placa: true,
+                        vram_livre_mb: principal.as_ref().and_then(|g| g.vram_livre_mb.or(g.vram_total_mb)),
+                        ram_livre_mb: det.ram_livre_mb,
+                    };
+                    let p = budget::plan(&shape, &rec, s.contexto_preferido);
+                    if p.todas_na_placa {
+                        1.0
+                    } else {
+                        p.camadas_na_placa as f32 / shape.camadas.max(1) as f32
+                    }
+                };
+                crate::escolha::Opcao {
+                    variante: c.variante.clone(),
+                    usa_placa,
+                    forcado: s.motor_forcado.as_deref() == Some(c.variante.as_str()),
+                    falhou: failed.contains(&c.variante),
+                    pos_teste: pos,
+                    prioridade: c.backend.prioridade(),
+                    fracao_na_placa,
+                }
+            })
+            .collect();
+        let tamanho_teste =
+            teste.as_ref().map(|t| t.tamanho_modelo.or_else(|| self.catalog().test_model().map(|m| m.tamanho)).unwrap_or(0));
+        let (ordem, motivo) = crate::escolha::ordenar(&opcoes, model.tamanho, tamanho_teste, &self.medidas_do_modelo(&model.id));
+        let mut v = base;
+        v.sort_by_key(|(c, _)| ordem.iter().position(|x| *x == c.variante).unwrap_or(usize::MAX));
+        (v, motivo)
+    }
+
     pub fn force_engine(&self, variante: Option<String>) -> Result<(), MotorError> {
         if let Some(v) = &variante {
             if !self.candidates().iter().any(|c| &c.variante == v) {
@@ -664,11 +778,16 @@ impl Motor {
             return Err(MotorError::Pausado);
         }
         if let Some(l) = guard.as_mut() {
-            if l.info.modelo_id == model_id && l.server.exited().is_none() {
+            // motor escolhido à mão diferente do que está rodando: troca no próximo pedido
+            let forcado = self.settings().motor_forcado;
+            let trocar_motor = forcado
+                .as_deref()
+                .is_some_and(|f| f != l.info.variante && self.engine_exe(f).is_some() && !self.session_failed.lock().unwrap().contains(f));
+            if l.info.modelo_id == model_id && l.server.exited().is_none() && !trocar_motor {
                 self.touch();
                 return Ok(l.info.clone());
             }
-            // outro modelo: espera as conversas em andamento terminarem
+            // outro modelo (ou outro motor): espera as conversas em andamento terminarem
             let t0 = std::time::Instant::now();
             while self.ativos() > 0 {
                 if t0.elapsed() > Duration::from_secs(120) {
@@ -685,11 +804,32 @@ impl Motor {
         if !model.existe() {
             return Err(MotorError::ArquivoSumiu(model.nome));
         }
+        let inicio = std::time::Instant::now();
         let det = self.detect_now().await;
-        let order = self.engine_order();
+        let deteccao_s = inicio.elapsed().as_secs_f64();
+        let (order, motivo) = self.engine_order_for(&model, &det);
         if order.is_empty() {
             return Err(MotorError::SemMotor);
         }
+        tracing::info!(
+            "carregando {}: ordem {:?} ({}), detecção {:.1}s",
+            model.id,
+            order.iter().map(|(c, _)| c.variante.as_str()).collect::<Vec<_>>(),
+            motivo.texto(),
+            deteccao_s
+        );
+        let mut etapas: Vec<Value> = Vec::new();
+        let registrar = |me: &Self, ok: bool, variante: Option<&str>, etapas: &[Value]| {
+            let total = inicio.elapsed().as_secs_f64();
+            let r = json!({
+                "modelo_id": model.id, "modelo": model.nome, "ok": ok, "variante": variante,
+                "segundos_total": (total * 10.0).round() / 10.0,
+                "segundos_deteccao": (deteccao_s * 10.0).round() / 10.0,
+                "tentativas": etapas, "quando": now_unix(),
+            });
+            tracing::info!("carregamento de {}: {}", model.id, r);
+            *me.ultimo_carregamento.write().unwrap() = Some(r);
+        };
         let principal = det.principal().cloned();
         let contexto = self.settings().contexto_preferido;
         let mut tentativas: Vec<String> = Vec::new();
@@ -719,7 +859,15 @@ impl Motor {
                     args_extras: vec![],
                     mmproj: model.mmproj.clone().filter(|p| p.is_file()),
                 };
-                match supervisor::start(&spec, &self.local, self.load_timeout).await {
+                let t_tentativa = std::time::Instant::now();
+                let resultado = supervisor::start(&spec, &self.local, self.load_timeout).await;
+                let seg = (t_tentativa.elapsed().as_secs_f64() * 10.0).round() / 10.0;
+                etapas.push(json!({
+                    "variante": cand.variante, "motor": cand.nome, "segundos": seg, "ok": resultado.is_ok(),
+                    "camadas_na_placa": plano.ngl_arg(), "contexto": plano.contexto,
+                    "erro": resultado.as_ref().err().map(|e| e.to_string()),
+                }));
+                match resultado {
                     Ok(server) => {
                         let info = CarregadoInfo {
                             modelo_id: model.id.clone(),
@@ -731,7 +879,9 @@ impl Motor {
                             plano: plano.clone(),
                             embeddings: model.embeddings,
                             desde: now_unix(),
+                            motivo: if i == 0 { motivo.texto().to_string() } else { format!("o motor {} não funcionou", order[0].0.nome) },
                         };
+                        registrar(self, true, Some(&cand.variante), &etapas);
                         *guard = Some(Loaded { server, info: info.clone() });
                         *self.snapshot.write().unwrap() = Some(info.clone());
                         self.touch();
@@ -760,6 +910,7 @@ impl Motor {
                         }
                         if is_model_specific(&motivo) {
                             self.set_fase(Fase::Parado, "");
+                            registrar(self, false, None, &etapas);
                             return Err(MotorError::Falhou(motivo));
                         }
                         self.mark_failed(&cand.variante);
@@ -773,6 +924,7 @@ impl Motor {
             }
         }
         self.set_fase(Fase::Parado, "");
+        registrar(self, false, None, &etapas);
         Err(MotorError::Falhou(format!("Nenhum motor conseguiu abrir o modelo. {}", tentativas.join(" | "))))
     }
 
@@ -861,7 +1013,9 @@ impl Motor {
         n
     }
 
-    pub fn record_speed(&self, leitura: Option<f64>, geracao: Option<f64>) {
+    /// Guarda a velocidade da última resposta. Com `gerados` suficientes, também
+    /// anota a velocidade DESTE modelo NESTE motor, que passa a pesar na escolha.
+    pub fn record_speed(&self, leitura: Option<f64>, geracao: Option<f64>, gerados: Option<u64>) {
         if leitura.is_none() && geracao.is_none() {
             return;
         }
@@ -870,7 +1024,33 @@ impl Motor {
             geracao_tps: geracao.map(|v| (v * 10.0).round() / 10.0),
             quando: now_unix(),
         });
+        if let (Some(g), Some(n), Some(info), Some(det)) = (geracao, gerados, self.loaded_info(), self.detection()) {
+            if n >= MIN_TOKENS_MEDIDA && g > 0.0 && !info.embeddings {
+                self.anotar_medida(&info.modelo_id, &det.fingerprint(), &info.variante, g, None);
+            }
+        }
         self.bump();
+    }
+
+    fn anotar_medida(&self, model_id: &str, fingerprint: &str, variante: &str, tps: f64, teste: Option<Vec<BenchResult>>) {
+        {
+            let mut e = self.estado.lock().unwrap();
+            let m = e.medidas.entry(model_id.to_string()).or_default();
+            if m.fingerprint != fingerprint {
+                *m = MedidasModelo { fingerprint: fingerprint.to_string(), ..Default::default() };
+            }
+            let novo = match m.por_motor.get(variante) {
+                // suaviza: uma resposta curta não muda tudo de uma vez
+                Some(antigo) if teste.is_none() => 0.6 * antigo + 0.4 * tps,
+                _ => tps,
+            };
+            m.por_motor.insert(variante.to_string(), (novo * 10.0).round() / 10.0);
+            m.quando = now_unix();
+            if teste.is_some() {
+                m.teste = teste;
+            }
+        }
+        self.save_estado();
     }
 
     /// Últimas linhas do registro do llama-server em uso.
@@ -952,6 +1132,96 @@ impl Motor {
     }
 
     /// Baixa um modelo do catálogo (retoma se já houver parte baixada).
+    fn pastas_locais(&self) -> PastasLocais {
+        self.pastas_locais.clone().unwrap_or_else(PastasLocais::do_sistema)
+    }
+
+    /// Modelos GGUF que outros programas já baixaram neste computador.
+    pub fn modelos_no_computador(&self) -> Vec<crate::locais::ModeloLocal> {
+        let p = self.pastas_locais();
+        let mut v: Vec<crate::locais::ModeloLocal> = crate::ollama::scan_all(&p.ollama)
+            .into_iter()
+            .map(|o| crate::locais::ModeloLocal {
+                fonte: crate::locais::Fonte::Ollama,
+                tamanho: o.tamanho,
+                nome: o.referencia,
+                caminho: o.caminho,
+            })
+            .collect();
+        if let Some(hf) = &p.hugging_face {
+            v.extend(crate::locais::ggufs_hugging_face(hf));
+        }
+        v.extend(crate::locais::ggufs_lm_studio(&p.lm_studio));
+        let usados: Vec<PathBuf> = self.registry.lock().unwrap().modelos.iter().map(|m| m.arquivo.clone()).collect();
+        v.retain(|m| !usados.contains(&m.caminho));
+        v
+    }
+
+    /// Se o mesmo arquivo de um modelo do catálogo já foi baixado por outro
+    /// programa (mesmo SHA-256), registra ele em vez de baixar de novo.
+    /// Tenta um link físico na pasta do Ignis (sem gastar espaço e sem depender
+    /// do outro programa); se não der (outro disco, Flatpak), lê no lugar.
+    fn reaproveitar_do_computador(&self, m: &crate::catalog::CatalogModel) -> Option<String> {
+        let p = self.pastas_locais();
+        let local = crate::locais::achar_por_sha256(&m.sha256, &p.ollama, p.hugging_face.as_deref())?;
+        if local.tamanho != m.tamanho {
+            return None;
+        }
+        let dest = self.paths.models_dir().join(&m.arquivo);
+        let (arquivo, origem) = if !dest.exists() && std::fs::hard_link(&local.caminho, &dest).is_ok() {
+            (dest, Origem::Catalogo { id: m.id.clone() })
+        } else {
+            (local.caminho.clone(), Origem::NoComputador { fonte: local.fonte.nome().to_string() })
+        };
+        let mut im = InstalledModel::from_file(m.id.clone(), Some(m.nome.clone()), arquivo, origem, Some(m.sha256.clone())).ok()?;
+        im.licenca = Some(m.licenca.clone());
+        im.embeddings = im.embeddings || m.embeddings();
+        self.registry.lock().unwrap().add(im).ok()?;
+        self.bump();
+        self.aviso("info", format!("{} já estava no computador ({}): usei de lá, sem baixar de novo.", m.nome, local.fonte.nome()));
+        Some(m.id.clone())
+    }
+
+    /// Registra (lido no lugar) um GGUF que outro programa já baixou.
+    fn registrar_local(&self, l: &crate::locais::ModeloLocal) -> Result<InstalledModel, MotorError> {
+        // "dono/repo · arquivo.gguf" ou "pasta/arquivo.gguf": o nome do arquivo identifica o modelo
+        let arquivo = l.nome.rsplit(['·', '/']).next().unwrap_or(&l.nome).trim();
+        let stem = arquivo.trim_end_matches(".gguf");
+        let id = format!("local/{}", crate::util::safe_file_name(stem));
+        let im = InstalledModel::from_file(
+            id,
+            Some(stem.to_string()),
+            l.caminho.clone(),
+            Origem::NoComputador { fonte: l.fonte.nome().into() },
+            None,
+        )
+        .map_err(|e| MotorError::Falhou(e.to_string()))?;
+        self.registry.lock().unwrap().add(im.clone()).map_err(|e| MotorError::Falhou(e.to_string()))?;
+        self.bump();
+        Ok(im)
+    }
+
+    /// Registra um GGUF pequeno que já está no computador para o teste de velocidade.
+    fn usar_modelo_pequeno_do_computador(self: &Arc<Self>) -> Option<String> {
+        let mut locais: Vec<crate::locais::ModeloLocal> =
+            self.modelos_no_computador().into_iter().filter(|m| m.tamanho >= 50_000_000 && m.tamanho <= TAMANHO_MAX_TESTE).collect();
+        locais.sort_by_key(|m| m.tamanho);
+        for l in locais {
+            // modelos de embeddings não servem para o teste
+            if crate::gguf::ModelInfo::read(&l.caminho).map(|i| i.embeddings).unwrap_or(true) {
+                continue;
+            }
+            if let Ok(im) = self.registrar_local(&l) {
+                self.aviso(
+                    "info",
+                    format!("Para o teste, usei {} que já estava no computador ({}), sem baixar nada.", l.nome, l.fonte.nome()),
+                );
+                return Some(im.id);
+            }
+        }
+        None
+    }
+
     pub fn start_model_download(self: &Arc<Self>, catalog_id: &str) -> Result<String, MotorError> {
         let m = self
             .catalog()
@@ -960,6 +1230,9 @@ impl Motor {
             .ok_or_else(|| MotorError::Invalido(format!("\"{catalog_id}\" não está no catálogo.")))?;
         if self.registry.lock().unwrap().get(&m.id).map(|x| x.existe()).unwrap_or(false) {
             return Err(MotorError::Invalido(format!("{} já está instalado.", m.nome)));
+        }
+        if let Some(id) = self.reaproveitar_do_computador(&m) {
+            return Ok(id);
         }
         let tid = format!("modelo:{}", m.id);
         let cancel = self.task_begin(&tid, "modelo", &m.nome, Some(m.tamanho))?;
@@ -1326,6 +1599,12 @@ impl Motor {
         if !crate::gguf::is_gguf(caminho) {
             return Err(MotorError::Invalido("Este arquivo não é um modelo GGUF.".into()));
         }
+        // arquivo de outro programa (o Hugging Face guarda pelo hash): usa o nome de verdade
+        if let Some(l) = self.modelos_no_computador().into_iter().find(|l| l.caminho == caminho) {
+            if l.fonte != crate::locais::Fonte::Ollama {
+                return self.registrar_local(&l).map(|im| im.id);
+            }
+        }
         let stem = caminho.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "modelo".into());
         let id = format!("arquivo/{}", crate::util::safe_file_name(&stem));
         let im = InstalledModel::from_file(id.clone(), Some(stem), caminho.to_path_buf(), Origem::Arquivo, None)
@@ -1343,7 +1622,7 @@ impl Motor {
         let teste = cat.test_model().map(|m| m.id.clone());
         reg.modelos
             .iter()
-            .filter(|m| !m.embeddings && m.existe() && m.tamanho <= 2_200_000_000)
+            .filter(|m| !m.embeddings && m.existe() && m.tamanho <= TAMANHO_MAX_TESTE)
             .min_by_key(|m| (Some(&m.id) != teste.as_ref(), m.tamanho))
             .cloned()
     }
@@ -1371,11 +1650,23 @@ impl Motor {
             Value::Null
         } else {
             let cat = self.catalog();
+            let p = self.pastas_locais();
             match cat.test_model() {
-                Some(t) => {
-                    total += t.tamanho;
-                    json!({"id": t.id, "nome": t.nome, "tamanho": t.tamanho})
-                }
+                Some(t) => match crate::locais::achar_por_sha256(&t.sha256, &p.ollama, p.hugging_face.as_deref()) {
+                    Some(l) => json!({"id": t.id, "nome": t.nome, "tamanho": t.tamanho, "ja_no_computador": l.fonte.nome()}),
+                    None => match self
+                        .modelos_no_computador()
+                        .into_iter()
+                        .filter(|m| m.tamanho >= 50_000_000 && m.tamanho <= TAMANHO_MAX_TESTE)
+                        .min_by_key(|m| m.tamanho)
+                    {
+                        Some(l) => json!({"id": null, "nome": l.nome, "tamanho": l.tamanho, "ja_no_computador": l.fonte.nome()}),
+                        None => {
+                            total += t.tamanho;
+                            json!({"id": t.id, "nome": t.nome, "tamanho": t.tamanho})
+                        }
+                    },
+                },
                 None => Value::Null,
             }
         };
@@ -1424,6 +1715,15 @@ impl Motor {
                 }
             }
             if me.bench_model().is_none() {
+                // antes de baixar: o mesmo arquivo, ou outro modelo pequeno, já pode estar no computador
+                let cat = me.catalog();
+                if let Some(t) = cat.test_model().cloned() {
+                    if me.reaproveitar_do_computador(&t).is_none() {
+                        me.usar_modelo_pequeno_do_computador();
+                    }
+                }
+            }
+            if me.bench_model().is_none() {
                 let cat = me.catalog();
                 if let Some(t) = cat.test_model().cloned() {
                     me.set_fase(Fase::Preparando, format!("Baixando o modelo de teste ({})…", t.nome));
@@ -1457,6 +1757,101 @@ impl Motor {
         }
         let me = self.clone();
         tokio::spawn(async move { me.benchmark_inner().await });
+    }
+
+    /// Mede todos os motores com um modelo instalado (do jeito que ele seria
+    /// carregado: camadas na placa e contexto do orçamento). O resultado passa a
+    /// decidir o motor desse modelo.
+    pub fn run_benchmark_model(self: &Arc<Self>, model_id: &str) -> Result<(), MotorError> {
+        let model = self.registry.lock().unwrap().get(model_id).cloned().ok_or_else(|| MotorError::ModeloNaoEncontrado(model_id.into()))?;
+        if model.embeddings {
+            return Err(MotorError::Invalido(
+                "Modelos de embeddings não escrevem texto; o teste de velocidade é para modelos de conversa.".into(),
+            ));
+        }
+        if !model.existe() {
+            return Err(MotorError::ArquivoSumiu(model.nome));
+        }
+        if self.bench_running.load(Ordering::SeqCst) {
+            return Err(MotorError::Ocupado("Já tem um teste de velocidade rodando.".into()));
+        }
+        let me = self.clone();
+        tokio::spawn(async move { me.benchmark_model_inner(model).await });
+        Ok(())
+    }
+
+    async fn benchmark_model_inner(self: &Arc<Self>, model: InstalledModel) {
+        if self.bench_running.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        struct Release<'a>(&'a AtomicBool);
+        impl Drop for Release<'_> {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::SeqCst);
+            }
+        }
+        let _release = Release(&self.bench_running);
+        while self.ativos() > 0 {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        self.unload().await;
+        let det = self.detect_now().await;
+        let principal = det.principal().cloned();
+        let ctx = self.settings().contexto_preferido.min(4096);
+        let cands: Vec<(Candidate, PathBuf)> =
+            self.candidates().into_iter().filter(|c| c.disponivel).filter_map(|c| self.engine_exe(&c.variante).map(|e| (c, e))).collect();
+        if cands.is_empty() {
+            self.aviso("erro", "Nenhum motor instalado para testar. Clique em Preparar.");
+            return;
+        }
+        let n = cands.len();
+        let mut resultados = Vec::new();
+        for (i, (c, exe)) in cands.iter().enumerate() {
+            self.set_fase(Fase::Testando, format!("Testando {} no motor {} ({} de {n})…", model.nome, c.nome, i + 1));
+            let rec = Recursos {
+                usa_placa: c.backend.usa_placa() && principal.is_some(),
+                vram_livre_mb: principal.as_ref().and_then(|g| g.vram_livre_mb.or(g.vram_total_mb)),
+                ram_livre_mb: det.ram_livre_mb,
+            };
+            let plano = budget::plan(&model.shape(), &rec, ctx);
+            let r = benchmark::bench_one_com(
+                exe,
+                &c.variante,
+                c.backend,
+                &model.arquivo,
+                &self.local,
+                &plano.ngl_arg(),
+                plano.contexto.max(1024),
+                Duration::from_secs(300),
+            )
+            .await;
+            resultados.push(r);
+        }
+        let fp = det.fingerprint();
+        {
+            let mut e = self.estado.lock().unwrap();
+            let por_motor: HashMap<String, f64> =
+                resultados.iter().filter(|r| r.ok).filter_map(|r| r.geracao_tps.map(|g| (r.variante.clone(), g))).collect();
+            e.medidas.insert(
+                model.id.clone(),
+                MedidasModelo { fingerprint: fp, por_motor, quando: now_unix(), teste: Some(resultados.clone()) },
+            );
+        }
+        self.save_estado();
+        self.set_fase(Fase::Parado, "");
+        let ordem = benchmark::rank(&resultados);
+        match ordem.first().and_then(|v| resultados.iter().find(|r| &r.variante == v)) {
+            Some(best) => self.aviso(
+                "info",
+                format!(
+                    "Teste com {}: o motor {} foi o mais rápido ({} tokens/s). O Ignis vai usar ele para este modelo.",
+                    model.nome,
+                    best.nome,
+                    format!("{:.1}", best.geracao_tps.unwrap_or(0.0)).replace('.', ",")
+                ),
+            ),
+            None => self.aviso("erro", format!("Nenhum motor conseguiu rodar {} no teste.", model.nome)),
+        }
     }
 
     async fn benchmark_inner(self: &Arc<Self>) {
@@ -1511,6 +1906,8 @@ impl Motor {
             quando: now_unix(),
             resultados: resultados.clone(),
             ordem: ordem.clone(),
+            tamanho_modelo: Some(modelo.tamanho),
+            modelo_nome: Some(modelo.nome.clone()),
         };
         self.estado.lock().unwrap().teste = Some(teste);
         self.save_estado();
@@ -1684,6 +2081,7 @@ impl Motor {
                 "camadas_na_placa": i.plano.camadas_na_placa, "todas_na_placa": i.plano.todas_na_placa,
                 "encaixe": i.plano.encaixe, "embeddings": i.embeddings, "desde": i.desde,
                 "memoria_placa_mb": i.plano.memoria_placa_mb, "memoria_ram_mb": i.plano.memoria_ram_mb,
+                "motivo_motor": i.motivo,
             })
         });
         let proximo_motor = self.engine_order().first().map(|(c, _)| json!({"variante": c.variante, "nome": c.nome, "backend": c.backend}));
@@ -1703,6 +2101,7 @@ impl Motor {
             "motor_forcado": s.motor_forcado,
             "llama_cpp": self.manifest().llama_cpp.versao,
             "modelo": modelo_info,
+            "ultimo_carregamento": self.ultimo_carregamento.read().unwrap().clone(),
             "velocidade": self.velocidade.read().unwrap().clone(),
             "teste": {
                 "feito": bench.is_some(),
@@ -1710,6 +2109,7 @@ impl Motor {
                 "quando": bench.as_ref().map(|b| b.quando),
                 "resultados": bench.as_ref().map(|b| b.resultados.clone()).unwrap_or_default(),
                 "ordem": bench.as_ref().map(|b| b.ordem.clone()).unwrap_or_default(),
+                "modelo_nome": bench.as_ref().and_then(|b| b.modelo_nome.clone()),
             },
             "precisa_preparar": self.needs_preparation(),
             "tarefas": self.tarefas(),

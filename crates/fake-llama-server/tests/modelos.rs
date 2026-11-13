@@ -254,3 +254,72 @@ async fn procurar_e_aplicar_atualizacao_do_catalogo() {
     assert!(amb.paths.catalog_override().exists(), "catálogo novo guardado para os próximos inícios");
     assert!(m.apply_update("nada").is_err());
 }
+
+/// "Preparar" não baixa o modelo de teste se o mesmo arquivo já estiver no
+/// computador (baixado pelo Ollama ou pelo Hugging Face): acha pelo SHA-256.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn modelo_ja_no_computador_nao_e_baixado_de_novo() {
+    use ignis_core::service::PastasLocais;
+    let d = tempfile::tempdir().unwrap();
+    // o "modelo de teste" do catálogo, já baixado pelo Hugging Face (nome do blob = SHA-256)
+    let gguf = comum::modelo_gguf(d.path(), "qwen3-teste", false);
+    let bytes = std::fs::read(&gguf).unwrap();
+    let sha = hex::encode(Sha256::digest(&bytes));
+    let hf = d.path().join("hf");
+    let blob = hf.join("models--unsloth--Qwen3-0.6B-GGUF").join("blobs").join(&sha);
+    std::fs::create_dir_all(blob.parent().unwrap()).unwrap();
+    std::fs::copy(&gguf, &blob).unwrap();
+    let catalogo = comum::catalogo_com(&[("qwen3-0.6b", "Qwen3 0.6B", "Qwen3-0.6B-Q8_0.gguf", &sha, bytes.len() as u64, true)]);
+    let amb = comum::ambiente_com(
+        comum::Opcoes { catalog: Some(catalogo), ..Default::default() },
+        Some(PastasLocais { ollama: vec![], hugging_face: Some(hf.clone()), lm_studio: vec![] }),
+    );
+    let m = &amb.motor;
+    m.detect_now().await;
+    // o plano já mostra que não precisa baixar
+    let plano = m.preparation_plan();
+    assert_eq!(plano["modelo_teste"]["ja_no_computador"], "Hugging Face", "{plano}");
+    // baixar pelo catálogo: registra na hora, sem tarefa de download
+    let id = m.start_model_download("qwen3-0.6b").unwrap();
+    assert_eq!(id, "qwen3-0.6b");
+    let im = m.installed_models().into_iter().find(|x| x.id == "qwen3-0.6b").unwrap();
+    assert!(im.existe());
+    assert!(m.tarefas().is_empty(), "não deve abrir download: {:?}", m.tarefas());
+    assert!(comum::avisos_texto(m).contains("já estava no computador"));
+    // o arquivo do Hugging Face continua lá
+    assert!(blob.is_file());
+    // remover do Ignis não apaga o do Hugging Face
+    m.remove_model("qwen3-0.6b").await.unwrap();
+    assert!(blob.is_file());
+}
+
+/// Sem o mesmo arquivo, mas com outro modelo pequeno no computador: o teste usa ele.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn preparar_usa_modelo_pequeno_que_ja_esta_no_computador() {
+    use ignis_core::service::PastasLocais;
+    let d = tempfile::tempdir().unwrap();
+    let lm = d.path().join("lmstudio");
+    let pasta = lm.join("lmstudio-community").join("Llama-3.2-1B-GGUF");
+    std::fs::create_dir_all(&pasta).unwrap();
+    let gguf = comum::modelo_gguf(&pasta, "Llama-3.2-1B-Q4_K_M", false);
+    // um modelo "pequeno" de verdade tem mais de 50 MB: cresce o arquivo
+    let f = std::fs::OpenOptions::new().append(true).open(&gguf).unwrap();
+    f.set_len(60_000_000).unwrap();
+    let catalogo = comum::catalogo_com(&[("qwen3-0.6b", "Qwen3 0.6B", "Qwen3-0.6B-Q8_0.gguf", &"e".repeat(64), 600_000_000, true)]);
+    let amb = comum::ambiente_com(
+        comum::Opcoes { catalog: Some(catalogo), ..Default::default() },
+        Some(PastasLocais { ollama: vec![], hugging_face: None, lm_studio: vec![lm.clone()] }),
+    );
+    let m = &amb.motor;
+    m.detect_now().await;
+    let plano = m.preparation_plan();
+    assert_eq!(plano["modelo_teste"]["ja_no_computador"], "LM Studio", "{plano}");
+    assert_eq!(plano["total"], serde_json::json!(0), "nada para baixar além dos motores já instalados: {plano}");
+    m.prepare().unwrap();
+    comum::esperar("teste com o modelo do LM Studio", Duration::from_secs(60), || m.bench().is_some() && !m.bench_running()).await;
+    assert_eq!(m.bench().unwrap().modelo_nome.as_deref(), Some("Llama-3.2-1B-Q4_K_M"));
+    let im = m.installed_models().into_iter().find(|x| x.id == "local/Llama-3.2-1B-Q4_K_M").unwrap();
+    assert_eq!(im.origem, ignis_core::models::Origem::NoComputador { fonte: "LM Studio".into() });
+    assert!(m.tarefas().iter().all(|t| !t.id.starts_with("modelo:")), "não baixou modelo: {:?}", m.tarefas());
+    assert!(gguf.is_file());
+}

@@ -81,13 +81,29 @@ async fn measure(client: &reqwest::Client, base: &str) -> Result<(f64, f64), Str
 
 /// Testa um motor: sobe com o modelo pequeno, mede e encerra.
 pub async fn bench_one(exe: &Path, variante: &str, backend: Backend, modelo: &Path, client: &reqwest::Client) -> BenchResult {
+    bench_one_com(exe, variante, backend, modelo, client, "999", 2048, LIMITE_PARA_SUBIR).await
+}
+
+/// Mede um motor com um modelo qualquer (ex.: "Testar com este modelo"), com as
+/// camadas na placa e o contexto que o Ignis usaria para ele.
+#[allow(clippy::too_many_arguments)]
+pub async fn bench_one_com(
+    exe: &Path,
+    variante: &str,
+    backend: Backend,
+    modelo: &Path,
+    client: &reqwest::Client,
+    ngl: &str,
+    contexto: u32,
+    limite_subir: Duration,
+) -> BenchResult {
     let started = Instant::now();
     let spec = LaunchSpec {
         exe: exe.to_path_buf(),
         modelo: modelo.to_path_buf(),
         alias: "teste".into(),
-        contexto: 2048,
-        ngl: "999".into(),
+        contexto,
+        ngl: ngl.into(),
         embeddings: false,
         backend,
         variante: variante.into(),
@@ -104,7 +120,7 @@ pub async fn bench_one(exe: &Path, variante: &str, backend: Backend, modelo: &Pa
         erro: None,
         duracao_ms: 0,
     };
-    match supervisor::start(&spec, client, LIMITE_PARA_SUBIR).await {
+    match supervisor::start(&spec, client, limite_subir).await {
         Err(e) => result.erro = Some(e.to_string()),
         Ok(mut server) => {
             match tokio::time::timeout(LIMITE_POR_CANDIDATO, measure(client, &server.base_url)).await {

@@ -13,7 +13,7 @@ use ignis_core::engine::{Backend, EngineManifest, EngineStore, Variant};
 use ignis_core::gguf::{write_test_gguf, Value as GValue};
 use ignis_core::gpu::{Detection, Gpu, RawSources, Vendor};
 use ignis_core::paths::Paths;
-use ignis_core::service::{Motor, MotorOptions};
+use ignis_core::service::{Motor, MotorOptions, PastasLocais};
 use serde_json::{json, Value};
 
 pub const FAKE: &str = env!("CARGO_BIN_EXE_fake-llama-server");
@@ -102,6 +102,12 @@ impl Default for Opcoes {
 }
 
 pub fn ambiente(op: Opcoes) -> Ambiente {
+    // sem pastas de outros programas: os testes não enxergam o Ollama/HF do computador
+    ambiente_com(op, Some(PastasLocais::default()))
+}
+
+/// Ambiente com pastas de modelos de outros programas (Ollama, Hugging Face, LM Studio) escolhidas.
+pub fn ambiente_com(op: Opcoes, pastas_locais: Option<PastasLocais>) -> Ambiente {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::under(dir.path());
     paths.ensure().unwrap();
@@ -132,6 +138,7 @@ pub fn ambiente(op: Opcoes) -> Ambiente {
             manifest_override: Some(manifest),
             auto_teste: false,
             extras_motor: None,
+            pastas_locais,
         },
     );
     Ambiente { dir, motor, paths }
@@ -201,4 +208,34 @@ pub fn cliente() -> reqwest::Client {
 
 pub fn contador(amb: &Ambiente, variante: &str) -> u64 {
     std::fs::read_to_string(amb.dir.path().join(format!("{variante}.tokens"))).ok().and_then(|s| s.trim().parse().ok()).unwrap_or(0)
+}
+
+/// Catálogo com modelos de teste: (id, nome, arquivo, sha256, tamanho, modelo_de_teste).
+pub fn catalogo_com(itens: &[(&str, &str, &str, &str, u64, bool)]) -> Catalog {
+    use ignis_core::catalog::{Arquitetura, CatalogModel};
+    Catalog {
+        versao: 1,
+        modelos: itens
+            .iter()
+            .map(|(id, nome, arquivo, sha, tamanho, teste)| CatalogModel {
+                id: (*id).into(),
+                nome: (*nome).into(),
+                tipo: "conversa".into(),
+                parametros_bilhoes: 0.6,
+                quantizacao: "Q8_0".into(),
+                repo: "teste/teste".into(),
+                revisao: "abc".into(),
+                arquivo: (*arquivo).into(),
+                tamanho: *tamanho,
+                sha256: (*sha).into(),
+                licenca: "Apache-2.0".into(),
+                licenca_url: "https://exemplo.invalid".into(),
+                uso: "Teste".into(),
+                arquitetura: Arquitetura { camadas: 28, cabecas_kv: 8, dim_k: 64, dim_v: 64, embd: 1024, contexto_max: 4096 },
+                modelo_de_teste: *teste,
+                // nunca baixa de verdade nos testes
+                url: Some("http://127.0.0.1:9/nao-existe".into()),
+            })
+            .collect(),
+    }
 }
