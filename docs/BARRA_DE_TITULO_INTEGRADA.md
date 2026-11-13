@@ -34,7 +34,11 @@ Visual:
   - Windows: estilo Windows 11, à direita;
   - Mac: as três bolinhas coloridas à esquerda;
   - Linux: leia o lado, a ordem e quais botões o sistema usa (configuração gtk-decoration-layout do GTK, que o GNOME e o KDE preenchem) e o tema. Botões à esquerda ou tema estilo Mac (WhiteSur, Mojave…) → bolinhas coloridas; GNOME → botões redondos do Adwaita; KDE → estilo Breeze. Se o GNOME mostra só o fechar, mostre só o fechar.
-  - Tenha uma opção nas configurações para escolher o estilo à mão (Automático, Windows, GNOME, KDE, Mac).
+  - Matsu OS: reconheça pelo nome em /etc/os-release (no Flatpak, /run/host/os-release) e use as bolinhas com estas cores:
+    - em uso: vermelha #ff5f57, amarela #febc2e, verde #28c840;
+    - mouse em cima do grupo: × #4d0000, − #995700 e dois triângulos #006500 no verde;
+    - janela em segundo plano: cinza #59545d no tema escuro e #c9c9cf no claro.
+  - Tenha uma opção nas configurações para escolher o estilo à mão (Automático, Windows, GNOME, KDE, Mac, Matsu OS).
 - O resto do app é igual em todos os sistemas.
 
 Comportamento (tem que continuar igual a uma janela normal):

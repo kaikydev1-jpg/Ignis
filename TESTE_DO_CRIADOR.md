@@ -34,6 +34,12 @@ extensão AppIndicator.
 - O visual da janela deve ser **igual** nos dois sistemas (fonte, cores, layout). Só os botões da janela mudam para ficar no jeito de cada sistema:
   - Windows: estilo Windows 11;
   - Linux: segue o lado, a ordem e o estilo do seu sistema. Botões à esquerda ou tema estilo Mac → bolinhas coloridas no topo da lateral; GNOME → botões redondos; KDE → setas.
+  - **Matsu OS:** o Ignis reconhece o sistema pelo nome e usa o estilo "Matsu OS", com as cores da referência:
+    - em uso: vermelha, amarela e verde;
+    - mouse em cima: ×, − e os dois triângulos;
+    - em segundo plano: cinza (`#59545d` no escuro, `#c9c9cf` no claro).
+
+    Se não reconhecer, escolha "Matsu OS" em **Motor → Botões da janela** e me mande a saída de `cat /etc/os-release`.
   - Se não ficar igual ao do seu sistema: escolha em **Motor → Botões da janela** e me mande a saída de
     `gsettings get org.gnome.desktop.wm.preferences button-layout` e `gsettings get org.gnome.desktop.interface gtk-theme`.
 - Teste da barra:
