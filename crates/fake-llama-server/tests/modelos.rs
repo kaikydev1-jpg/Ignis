@@ -303,8 +303,10 @@ async fn preparar_usa_modelo_pequeno_que_ja_esta_no_computador() {
     std::fs::create_dir_all(&pasta).unwrap();
     let gguf = comum::modelo_gguf(&pasta, "Llama-3.2-1B-Q4_K_M", false);
     // um modelo "pequeno" de verdade tem mais de 50 MB: cresce o arquivo
-    let f = std::fs::OpenOptions::new().append(true).open(&gguf).unwrap();
+    // (no Windows, arquivo aberto só para acrescentar não pode mudar de tamanho: abre para escrita)
+    let f = std::fs::OpenOptions::new().write(true).open(&gguf).unwrap();
     f.set_len(60_000_000).unwrap();
+    drop(f);
     let catalogo = comum::catalogo_com(&[("qwen3-0.6b", "Qwen3 0.6B", "Qwen3-0.6B-Q8_0.gguf", &"e".repeat(64), 600_000_000, true)]);
     let amb = comum::ambiente_com(
         comum::Opcoes { catalog: Some(catalogo), ..Default::default() },
