@@ -190,4 +190,5 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: Ignis ${{ steps.v.outputs.versao }}
           body_path: notas.md
+          overwrite_files: true
           files: release/*
