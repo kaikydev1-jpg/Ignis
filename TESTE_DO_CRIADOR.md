@@ -75,7 +75,14 @@ extensão AppIndicator.
   - ROCm/HIP **indisponível** ("Sua placa (gfx803) não é suportada pelo ROCm");
   - Vulkan **disponível**;
   - Processador disponível.
-- **Esperado:** o teste escolhe o Vulkan, bem mais rápido que o processador.
+- **Teste geral (modelo pequeno):** pode dar o processador na frente (no relatório do Valkode: Processador 68,2 contra Vulkan 37,5 tokens/s). Isso só vale para modelos pequenos.
+- **Com um modelo grande que cabe na placa (ex.: Qwen3 8B):** carregue e veja em **Status**.
+  - **Esperado:** "No motor Vulkan… (escolhido porque o modelo cabe na placa)", com cerca de 16 tokens/s.
+- **Testar velocidade:** em **Modelos**, clique em "Testar velocidade" no 8B.
+  - **Esperado:** "Velocidade neste modelo: **Vulkan** ~16 · Processador ~8"; daí em diante o 8B usa o mais rápido medido.
+- **Tempo de carregamento:** descarregue e carregue o 8B duas vezes seguidas.
+  - **Esperado:** **Status** mostra "Carregou em N s". A segunda vez é bem mais rápida (o arquivo já está na memória e o driver já preparou o Vulkan).
+  - Os detalhes de cada etapa ficam em `http://127.0.0.1:11470/motor/estado` → `ultimo_carregamento`.
 - Fedora sem Vulkan: aparece a dica `sudo dnf install vulkan-loader mesa-vulkan-drivers`.
 
 ### 2b. AMD com ROCm (RX 6600 / 7600 / 9060 XT)
@@ -135,9 +142,11 @@ extensão AppIndicator.
 2. Desligue a opção em **Motor → Configurações** e reinicie.
    - **Esperado:** o Ignis não abre sozinho.
 
-## 7. Importar do Ollama
-1. Com o Ollama instalado e algum modelo baixado, vá em **Modelos → Procurar modelos do Ollama**.
-   - **Esperado:** a lista dos modelos do Ollama.
+## 7. Modelos que já estão no computador (Ollama, Hugging Face, LM Studio)
+0. Com o Qwen3 0.6B já baixado pelo Hugging Face (ou outro modelo pequeno no Ollama/LM Studio), numa instalação nova clique em **Preparar o Ignis**.
+   - **Esperado:** o passo 2 diz "o modelo para o teste… já está no computador: não precisa baixar", e nenhum download de modelo começa.
+1. Vá em **Modelos → Mais opções → Procurar modelos no computador**.
+   - **Esperado:** a lista com os modelos do Ollama, do Hugging Face e do LM Studio, cada um com a sua etiqueta.
 2. Clique em **Usar daqui** num deles e depois em **Carregar**.
    - **Esperado:** funciona sem copiar o arquivo.
 3. Remova o modelo do Ignis.

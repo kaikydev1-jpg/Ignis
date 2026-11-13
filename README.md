@@ -54,13 +54,15 @@ Cada mudança no código gera instaladores de teste automaticamente, separados d
   - Intel e outras: Vulkan;
   - sempre: processador.
 
-  Na primeira vez, testa cada motor por até 30 s e usa o mais rápido. Se um
-  motor falha ou cai, passa para o próximo sozinho e avisa.
+  Na primeira vez, testa cada motor por até 30 s. Para cada modelo, usa a placa
+  quando ele cabe nela, e aprende com o uso qual motor é mais rápido para aquele
+  modelo (ou use "Testar velocidade" no modelo). Se um motor falha ou cai, passa
+  para o próximo sozinho e avisa.
 - **Baixa só o motor que serve para a sua placa**: o instalador não leva motores nem modelos.
 - **Modelos:**
   - catálogo curto escolhido a dedo e filtrado pela sua placa ("Roda bem na sua placa");
   - download do Hugging Face com cancelar, retomar e conferência de hash;
-  - importação do Ollama (opcional; o Ignis não precisa dele), sem nunca apagar nada lá.
+  - reaproveita modelos que já estão no computador (Ollama, Hugging Face, LM Studio): não baixa de novo o que já existe, e nunca apaga nada lá.
 - **Qualquer modelo do Hugging Face:**
   - busca dentro do app, com versões, tamanho e "cabe na sua placa?" (lendo o cabeçalho, sem baixar tudo);
   - modelos em várias partes e modelos que entendem imagem/áudio (arquivo `mmproj`);

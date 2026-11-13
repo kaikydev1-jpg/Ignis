@@ -124,6 +124,7 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `POST /motor/modelos/cancelar` `{"id":"qwen3-8b"}` | Cancela (a parte baixada fica guardada) |
 | `POST /motor/modelos/remover` `{"id":"…"}` | Remove (apaga só arquivos da pasta do Ignis; do Ollama/arquivos próprios só tira da lista) |
 | `GET /motor/modelos/ollama` | Modelos GGUF achados na pasta do Ollama |
+| `GET /motor/modelos/computador` | Modelos GGUF que outros programas já baixaram: Ollama, Hugging Face (cache do `huggingface_hub`) e LM Studio (`fonte`, `nome`, `caminho`, `tamanho`). Para usar: `POST /motor/modelos/importar` com `{"caminho"}` (ou `{"referencia"}` no Ollama) |
 | `POST /motor/modelos/importar` `{"referencia":"llama3.2:3b","modo":"usar"\|"copiar"}` ou `{"caminho":"/x/m.gguf"}` | Importa do Ollama (nunca apaga nada lá) ou um arquivo |
 | `POST /motor/modelos/carregar` `{"id":"…"}` | Carrega já (sem esperar o primeiro pedido) |
 | `POST /motor/modelos/descarregar` | Libera a placa |
@@ -131,7 +132,8 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `POST /motor/parar` `{"id":"…"}` | Para uma conversa (ou todas) |
 | `POST /motor/pausar` / `POST /motor/retomar` | Pausar descarrega e recusa pedidos até retomar |
 | `POST /motor/preparar` | Baixa os motores da placa + modelo de teste e testa a velocidade |
-| `POST /motor/testar` | Roda o teste de velocidade de novo |
+| `POST /motor/testar` | Roda o teste de velocidade geral de novo (modelo pequeno) |
+| `POST /motor/testar` `{"modelo":"qwen3-8b"}` | Mede todos os motores **com este modelo** (camadas e contexto como no uso real). O mais rápido passa a ser usado para ele |
 | `POST /motor/detectar` | Detecta a placa de novo |
 | `GET /motor/motores` | Candidatos (disponível/instalado/motivo/dica), ordem de uso, motor forçado |
 | `POST /motor/motores/forcar` `{"variante":"linux-vulkan"}` ou `{"variante":null}` | Força um motor (ou volta ao automático) |
@@ -144,6 +146,16 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `GET /motor/hf/conta` / `POST /motor/hf/conta` `{"token":"hf_..."}` | Conta da pessoa no Hugging Face (só para modelos que pedem aceite dos termos). O token fica só no computador e só vai ao huggingface.co; `{"token":""}` desconecta |
 | `GET /motor/relatorio` | Diagnóstico completo (detecção, candidatos, teste) |
 | `GET /motor/registro` | Últimas linhas do registro do llama-server |
+
+### Como o Ignis escolhe o motor de cada modelo
+1. Motor escolhido à mão vem primeiro; motor que falhou nesta sessão, por último.
+2. Se o modelo já foi medido em dois ou mais motores (uso real com 16+ tokens, ou `POST /motor/testar {"modelo"}`), vale o mais rápido medido.
+3. Modelo do tamanho do modelo do teste (até 2x): vale o teste de velocidade geral.
+4. Modelo maior: a placa vem primeiro se pelo menos metade das camadas couber nela; senão, o processador.
+
+`GET /motor/estado` mostra o motivo em `modelo.motivo_motor` e o tempo do último carregamento, etapa por etapa, em `ultimo_carregamento` (`segundos_total`, `segundos_deteccao`, `tentativas[]` com motor, segundos, camadas na placa, contexto e erro). `GET /motor/modelos` traz em cada instalado `velocidades` (tokens/s por motor, do mais rápido ao mais lento).
+
+Antes de baixar um modelo do catálogo, o Ignis procura o mesmo arquivo (mesmo SHA-256) já baixado pelo Ollama ou pelo Hugging Face e usa de lá, sem baixar de novo (origem `no-computador`, ou um link físico na pasta do Ignis).
 
 ## 5. Exemplos
 ```bash
