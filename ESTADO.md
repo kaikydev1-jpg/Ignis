@@ -3,11 +3,11 @@
 > Toda retomada começa por aqui. Atualizado antes de cada pausa.
 
 ## Situação
-**Versão oficial 0.1.0 publicada** (GitHub Releases, sem login e sem prazo):
+**Versão oficial 0.1.1 publicada** (GitHub Releases, sem login e sem prazo; a 0.1.0 continua lá):
 https://github.com/kaikydev1-jpg/Ignis/releases/latest, com arquivos por sistema
 (`Ignis-Windows.exe`, `Ignis-Fedora.rpm`, `Ignis-Flatpak.flatpak`, `Ignis-Ubuntu-Debian.deb`,
 `Ignis-Linux.AppImage`, `Ignis-Matsu-OS.flatpak`, `instalar.sh`, `SHA256SUMS.txt`, `atualizacoes.json`).
-Instalador pelo terminal (`scripts/instalar.sh`): descobre o sistema, baixa a versão certa, confere o SHA-256 e instala (testado de verdade no caminho Flatpak e no download+conferência do RPM).
+Instalador pelo terminal (`scripts/instalar.sh`): descobre o sistema, baixa a versão certa, confere o SHA-256 e instala. Testado de verdade com o comando publicado (`curl … instalar.sh | bash`) simulando o Matsu 27 OS: instalou o `Ignis-Matsu-OS.flatpak` 0.1.1; também o download+conferência do RPM.
 Versões de teste continuam separadas: Actions → **Instaladores** (90 dias, pede login).
 Próximo passo: o criador roda o TESTE_DO_CRIADOR.md na placa real.
 
