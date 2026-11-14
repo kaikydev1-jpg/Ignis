@@ -110,7 +110,8 @@ impl ManifestoAudio {
     }
 
     pub fn validar(&self) -> Result<(), String> {
-        let hex = |s: &str| s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit());
+        // 64 dígitos hexadecimais e não só zeros (zeros = soma ainda não preenchida)
+        let hex = |s: &str| s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()) && s.chars().any(|c| c != '0');
         for m in &self.motores {
             if !hex(&m.arquivo.sha256) || m.arquivo.tamanho == 0 {
                 return Err(format!("motor {} sem SHA-256 ou tamanho", m.id));
@@ -462,6 +463,9 @@ mod tests {
     fn manifesto_embutido_e_valido() {
         let m = ManifestoAudio::embutido();
         m.validar().unwrap();
+        // motores publicados de verdade (release motores-audio-N), não marcadores
+        assert!(m.motores.iter().all(|x| x.arquivo.tamanho > 100_000), "preencha os motores com o SHA256SUMS.txt da release");
+        assert!(m.url_base.contains(&m.versao), "a url_base aponta para a release {}", m.versao);
         // licenças que a janela mostra antes de baixar
         let voz = m.modelos.iter().find(|x| x.familia == Familia::Voz).unwrap();
         assert!(!voz.uso_comercial, "OmniVoice é CC BY-NC");

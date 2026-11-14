@@ -85,7 +85,7 @@ Sem chave. Endereço padrão `http://127.0.0.1:11470` (a porta pode mudar; veja 
 
 | Rota | Corpo | Resposta |
 |---|---|---|
-| `POST /v1/audio/speech` | JSON `{"model": "omnivoice", "input": "texto", "voice": "minha-voz", "language": "Portuguese", "response_format": "wav" \| "pcm", "seed": 42}`. Só `input` é obrigatório; sem `voice` usa a voz padrão do modelo | `audio/wav` 24 kHz mono (`"pcm"` = s16le em streaming) |
+| `POST /v1/audio/speech` | JSON `{"model": "omnivoice", "input": "texto", "voice": "minha-voz", "language": "Portuguese", "response_format": "wav" \| "pcm", "seed": 42}`. Só `input` é obrigatório; sem `voice` usa a voz padrão do modelo | `audio/wav` 24 kHz mono (também sem formato ou com outro formato); `"pcm"` = s16le cru em streaming |
 | `POST /v1/audio/voices` | JSON `{"name": "minha-voz", "ref_text": "<o que foi falado>", "wav_b64": "<WAV em base64>"}` (ou `"rvq_b64"`) | `200` voz guardada no Ignis (sobrevive a reinícios) e registrada no servidor de voz; `400` se o servidor recusar o áudio |
 | `GET /v1/audio/voices` | — | `{"object": "list", "data": [{"name": "minha-voz", "ref_text": "…"}]}` |
 | `DELETE /v1/audio/voices/{nome}` | — | `200` apagada; `404` se não existir |

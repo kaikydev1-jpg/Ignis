@@ -15,8 +15,8 @@
       "executavel": "tts-server.exe",
       "arquivo": {
         "nome": "ignis-voz-windows-vulkan.zip",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "8b1d25d61c5f20908a3f45e6abd57877a535d82e48172398ff53e344ed029b3c",
+        "tamanho": 13084873
       }
     },
     {
@@ -27,8 +27,8 @@
       "executavel": "tts-server.exe",
       "arquivo": {
         "nome": "ignis-voz-windows-cpu.zip",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "2e2382f7e58cd47bf789f6980f815aaa979e0ce7f17ad0bc8529f85cd5f52715",
+        "tamanho": 867399
       }
     },
     {
@@ -39,8 +39,8 @@
       "executavel": "tts-server",
       "arquivo": {
         "nome": "ignis-voz-linux-vulkan.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "71ff044d735ae6af91811037d67942b2520f96913fbb496041b5d50ba066592a",
+        "tamanho": 15255837
       }
     },
     {
@@ -51,8 +51,8 @@
       "executavel": "tts-server",
       "arquivo": {
         "nome": "ignis-voz-linux-cpu.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "1ce1b23ad9b3a96645b7177febbdbc37090655ef8c26363329132b5e9984e123",
+        "tamanho": 1966090
       }
     },
     {
@@ -63,8 +63,8 @@
       "executavel": "whisper-server.exe",
       "arquivo": {
         "nome": "ignis-transcricao-windows-vulkan.zip",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "e368a7689251547359da7238b7a4362e8c01142521191b6fa605fcc4ed5e0a40",
+        "tamanho": 14232466
       }
     },
     {
@@ -75,8 +75,8 @@
       "executavel": "whisper-server.exe",
       "arquivo": {
         "nome": "ignis-transcricao-windows-cpu.zip",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "1763406f59ede365837082cd4526d18ec9b973dd04f6a71f3f0f1e1dd2bab48d",
+        "tamanho": 918281
       }
     },
     {
@@ -87,8 +87,8 @@
       "executavel": "whisper-server",
       "arquivo": {
         "nome": "ignis-transcricao-linux-vulkan.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "789d81afa39c7dbf937037fdb5c73bcbeb8bc384c2d134890c4581345d78a88b",
+        "tamanho": 16335354
       }
     },
     {
@@ -99,8 +99,8 @@
       "executavel": "whisper-server",
       "arquivo": {
         "nome": "ignis-transcricao-linux-cpu.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "tamanho": 1
+        "sha256": "ce0d19c00ff64e6b0d6712c3c8115d169e8b971f3d2beb6ed8bfeac418873bca",
+        "tamanho": 1899421
       }
     }
   ],

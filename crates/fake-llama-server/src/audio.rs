@@ -102,7 +102,8 @@ async fn falar(State(a): State<Arc<Voz>>, Json(b): Json<Value>) -> Response {
         }
     }
     let amostras = 2400 * texto.chars().count().max(1);
-    if b.get("response_format").and_then(|x| x.as_str()) == Some("pcm") {
+    // igual ao tts-server de verdade: sem "response_format", devolve PCM cru
+    if matches!(b.get("response_format").and_then(|x| x.as_str()), Some("pcm") | None) {
         return Response::builder().header("content-type", "audio/pcm").body(Body::from(vec![0u8; amostras * 2])).unwrap();
     }
     Response::builder().header("content-type", "audio/wav").body(Body::from(wav(amostras))).unwrap()

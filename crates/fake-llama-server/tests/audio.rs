@@ -138,6 +138,11 @@ async fn placa_falha_e_a_voz_cai_para_o_processador() {
     let base = subir_api(m).await;
     let r = cliente().post(format!("{base}/v1/audio/speech")).json(&json!({"input": "Teste."})).send().await.unwrap();
     assert_eq!(r.status().as_u16(), 200);
+    // sem "response_format" (e com mp3, que o motor não tem) vem WAV, como na OpenAI
+    assert_eq!(&r.bytes().await.unwrap()[..4], b"RIFF");
+    let r =
+        cliente().post(format!("{base}/v1/audio/speech")).json(&json!({"input": "Teste.", "response_format": "mp3"})).send().await.unwrap();
+    assert_eq!(&r.bytes().await.unwrap()[..4], b"RIFF");
     assert_eq!(m.audio_rodando(ignis_core::audio::Familia::Voz).unwrap().backend, ignis_core::engine::Backend::Cpu);
     assert!(avisos_texto(m).contains("usando o processador"), "{}", avisos_texto(m));
     m.shutdown_all().await;

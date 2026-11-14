@@ -232,13 +232,20 @@ fn repassar_audio(resp: reqwest::Response, uso: crate::service::AudioUso) -> Res
 
 /// `POST /v1/audio/speech` (formato da OpenAI; servidor de voz omnivoice.cpp).
 async fn audio_fala(State(m): M, body: Bytes) -> Response {
-    let v: Value = match serde_json::from_slice(&body) {
+    let mut v: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(_) => return err_response(400, "json_invalido", "O corpo do pedido precisa ser JSON válido."),
     };
     if v.get("input").and_then(|x| x.as_str()).map(str::trim).unwrap_or("").is_empty() {
         return err_response(400, "invalid_request_error", "Mande o texto a falar em \"input\".");
     }
+    // a OpenAI devolve um arquivo de áudio quando o formato não vem; o tts-server
+    // devolveria PCM cru. Sem formato (ou com um que ele não tem, como mp3): WAV.
+    let formato = v.get("response_format").and_then(|x| x.as_str()).unwrap_or("");
+    if formato != "wav" && formato != "pcm" {
+        v["response_format"] = json!("wav");
+    }
+    let body = Bytes::from(serde_json::to_vec(&v).unwrap_or_default());
     let uso = m.audio_inicio_uso(crate::audio::Familia::Voz);
     let info = match m.garantir_audio(crate::audio::Familia::Voz).await {
         Ok(i) => i,

@@ -94,10 +94,10 @@ aceitam mensagens no formato da OpenAI, repassadas ao llama-server com `--mmproj
 Precisam ser preparadas uma vez (janela → **Voz**, ou `POST /motor/audio/preparar`).
 Sem preparar: `503` com `code: "audio_nao_preparado"`. Detalhes e exemplos em
 [docs/IGNIS_PARA_AZURIA.md](docs/IGNIS_PARA_AZURIA.md).
-- `POST /v1/audio/speech` — JSON `{"input", "voice"?, "language"?, "response_format": "wav"|"pcm", "seed"?}` → `audio/wav` 24 kHz (OmniVoice, licença CC BY-NC 4.0).
+- `POST /v1/audio/speech` — JSON `{"input", "voice"?, "language"?, "response_format": "wav"|"pcm", "seed"?}` → `audio/wav` 24 kHz (sem formato, ou outro formato: WAV) (OmniVoice, licença CC BY-NC 4.0).
 - `GET/POST /v1/audio/voices`, `DELETE /v1/audio/voices/{nome}` — vozes clonadas `{"name", "ref_text", "wav_b64"}`, guardadas pelo Ignis.
 - `POST /v1/audio/transcriptions` e `/v1/audio/translations` — multipart igual à OpenAI (`file`, `language`, `response_format`: `json`/`text`/`srt`/`vtt`/`verbose_json`) (Whisper, MIT).
-- Em `GET /v1/models` aparecem `omnivoice` (`"tipo": "voz"`) e `whisper-1` (`"tipo": "transcricao"`) quando preparados.
+- Em `GET /v1/models` aparecem `omnivoice` (`"ignis": {"tipo": "voz"}`) e `whisper-1` (`"ignis": {"tipo": "transcricao"}`) quando preparados.
 
 ### `POST /v1/embeddings`
 Só com modelo de embeddings (ex.: `qwen3-embedding-0.6b`). Sem `model` → usa o
