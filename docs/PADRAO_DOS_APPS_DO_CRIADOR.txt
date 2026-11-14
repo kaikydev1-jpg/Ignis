@@ -1,0 +1,315 @@
+PADRÃO DOS MEUS APLICATIVOS: WINDOWS, LINUX E MATSU OS
+======================================================
+
+Como usar: cole este texto no começo de qualquer chat de IA que for criar ou
+atualizar um aplicativo meu. Junto, eu mando um print do Matsu OS para mostrar
+como ele é. Siga o print para o resto do visual: cores, cantos e letra.
+
+Este padrão vale para todos os meus aplicativos. O Ignis
+(https://github.com/kaikydev1-jpg/Ignis) já segue tudo isto e serve de exemplo
+pronto (veja a seção 9).
+
+
+1. MEU SISTEMA OPERACIONAL: MATSU OS
+------------------------------------
+
+- Nome: Matsu OS.
+- O nome traz o ano da versão: "Matsu 27 OS" (2027), "Matsu 28 OS" (2028) e
+  assim por diante. Nunca dependa do número; reconheça só pela palavra "Matsu".
+- Base: Fedora Atomic (sistema imutável com rpm-ostree, como o Silverblue e o
+  Kinoite). Os aplicativos se instalam por Flatpak. Tudo que vale para o
+  Fedora Atomic vale para o Matsu OS.
+
+Como o aplicativo reconhece o Matsu OS:
+- Leia o arquivo os-release do sistema, nesta ordem (use o primeiro que existir):
+    /run/host/os-release       (dentro do Flatpak: o do sistema de verdade)
+    /etc/os-release
+    /usr/lib/os-release
+- É Matsu OS quando ID, NAME ou PRETTY_NAME contém "matsu", ignorando
+  maiúsculas, espaços, hífen e sublinhado.
+- Exemplo do que aparece no arquivo:
+    NAME="Matsu 27 OS"
+
+Código pronto (testado):
+
+  Terminal (shell):
+    f=/etc/os-release; [ -r /run/host/os-release ] && f=/run/host/os-release
+    if grep -iE '^(ID|NAME|PRETTY_NAME)=' "$f" | tr -d ' _-' | grep -qi matsu; then
+      echo "Matsu OS"
+    fi
+
+  Python:
+    import re
+    def eh_matsu():
+        for p in ("/run/host/os-release", "/etc/os-release", "/usr/lib/os-release"):
+            try:
+                texto = open(p, encoding="utf-8").read()
+                break
+            except OSError:
+                pass
+        else:
+            return False
+        for linha in texto.splitlines():
+            chave, _, valor = linha.partition("=")
+            if chave in ("ID", "NAME", "PRETTY_NAME") and "matsu" in re.sub(r'[\s_"-]', "", valor.lower()):
+                return True
+        return False
+
+  JavaScript (Node, Electron):
+    const fs = require("fs");
+    function ehMatsu() {
+      for (const p of ["/run/host/os-release", "/etc/os-release", "/usr/lib/os-release"]) {
+        try {
+          const texto = fs.readFileSync(p, "utf8");
+          return texto.split("\n").some((linha) => {
+            const [chave, ...resto] = linha.split("=");
+            return ["ID", "NAME", "PRETTY_NAME"].includes(chave)
+              && resto.join("=").toLowerCase().replace(/[\s_"-]/g, "").includes("matsu");
+          });
+        } catch {}
+      }
+      return false;
+    }
+
+  Rust (Tauri):
+    veja eh_matsu() e ler_os_release() em crates/ignis-core/src/distro.rs no
+    repositório do Ignis.
+
+
+2. DUAS VERSÕES PARA LINUX: UNIVERSAL E MATSU OS
+------------------------------------------------
+
+Todo aplicativo meu tem as duas:
+
+- Universal (qualquer Linux): segue o visual do sistema da pessoa (GNOME,
+  KDE, botões à esquerda ou à direita), como explica a seção 4.
+- Matsu OS: o mesmo aplicativo, já com o visual do Matsu OS (seção 3).
+
+Na prática é o mesmo pacote: o aplicativo reconhece o Matsu OS sozinho (seção
+1) e aplica o visual dele. Mesmo assim, na página de downloads do GitHub tem um
+arquivo com nome próprio para eu baixar direto: <App>-Matsu-OS.flatpak.
+
+Não coloque "Matsu OS" como opção manual nas configurações: é automático.
+
+
+3. VISUAL DO MATSU OS: OS BOTÕES DA JANELA
+------------------------------------------
+
+Bolinhas no estilo do Mac, com estas medidas e cores exatas:
+
+- Tamanho: bolinhas de 12 px, com 8 px de espaço entre elas e 14 px de
+  margem na lateral.
+- Cores com a janela em uso:
+    fechar     vermelha  #ff5f57
+    minimizar  amarela   #febc2e
+    maximizar  verde     #28c840
+- Símbolos: só aparecem com o mouse em cima do grupo de bolinhas, com traço
+  fino (1,35 px):
+    fechar     ×  na cor #4d0000
+    minimizar  −  na cor #995700
+    maximizar  dois triângulos (tela cheia) na cor #006500
+- Apertando: a bolinha escurece um pouco (brilho 82%).
+- Janela em segundo plano (sem foco): as três ficam cinza, sem símbolo.
+    tema escuro  #59545d
+    tema claro   #c9c9cf
+  Com o mouse em cima, as cores voltam.
+- Lado e ordem: siga o que o sistema usa (configuração gtk-decoration-layout,
+  seção 4). As bolinhas do Matsu OS valem mesmo que os botões fiquem à direita.
+- Temas claro e escuro seguindo o sistema.
+
+
+4. JANELA NATIVA DE VERDADE: BARRA DE TÍTULO INTEGRADA (WINDOWS E LINUX)
+------------------------------------------------------------------------
+
+O nome certo é "barra de título integrada" (custom title bar), igual VS Code,
+Discord, Spotify e os apps do Windows 11. NÃO use a barra padrão do sistema
+(aquela faixa cinza separada com o nome do app). Cuidado: se pedir "barra
+nativa", a IA entende que é justamente a cinza.
+
+Visual:
+- O aplicativo ocupa a janela inteira, até o topo, na cor do próprio app.
+- Windows: botões minimizar, maximizar/restaurar e fechar no canto superior
+  direito, no estilo do Windows 11: 46 px de largura cada, ícones finos de 10
+  px, fundo leve ao passar o mouse e o fechar vermelho (#C42B1C) com X branco.
+  O maximizar vira "restaurar" (dois quadradinhos) com a janela maximizada.
+  Sem foco, os ícones ficam mais apagados.
+- Linux (versão universal): leia o lado, a ordem e quais botões o sistema usa
+  pela configuração gtk-decoration-layout do GTK (o GNOME e o KDE preenchem; o
+  Flatpak também entrega). Exemplos:
+    "appmenu:close"              só o fechar, à direita (GNOME de fábrica)
+    "close,minimize,maximize:"   bolinhas à esquerda, estilo Mac
+  Tema estilo Mac (WhiteSur, Mojave...) ou botões à esquerda: bolinhas
+  coloridas. GNOME: botões redondos do Adwaita. KDE: estilo Breeze.
+- Matsu OS: as bolinhas da seção 3.
+- Nas configurações, uma opção para escolher o estilo à mão: Automático,
+  Windows, GNOME, KDE, Mac.
+
+Comportamento (tem que continuar igual a uma janela normal):
+- Arrastar pela faixa de cima (e por áreas vazias, como o logo) move a janela.
+- Duplo clique nessa faixa maximiza e restaura.
+- Botões, campos e links dentro da faixa continuam clicáveis e não arrastam.
+- Redimensionar pelas 4 bordas e pelos 4 cantos.
+- Windows 11: sombra e cantos arredondados do sistema, e arrastar até a borda
+  da tela encaixa a janela (Aero Snap).
+- Fechar respeita o aplicativo: se ele fica perto do relógio, fechar só
+  esconde a janela.
+
+Como fazer, por tecnologia:
+- Tauri 2: decorations false e shadow true; botões com minimize(),
+  toggleMaximize() e close(); permissões core:window:allow-start-dragging,
+  allow-minimize, allow-toggle-maximize, allow-close e
+  allow-start-resize-dragging.
+  Armadilha do Linux: o data-tauri-drag-region arrasta já no primeiro clique e
+  o duplo clique não chega. Faça o arraste à mão: no mousedown, se
+  e.detail === 2, chame toggleMaximize(); senão, só chame startDragging()
+  depois de o mouse andar 3 px com o botão apertado.
+- Electron: titleBarStyle 'hidden' com titleBarOverlay (cor do app, cor dos
+  ícones, altura 40); CSS -webkit-app-region: drag na faixa de cima e no-drag
+  nos botões e campos.
+- WinUI 3: ExtendsContentIntoTitleBar = true e SetTitleBar(...).
+- WPF: WindowChrome. Flutter: window_manager com TitleBarStyle.hidden.
+- Qt: Qt::FramelessWindowHint com startSystemMove() e startSystemResize().
+
+Antes de entregar, teste: arrastar, duplo clique, maximizar e restaurar,
+minimizar, fechar, redimensionar, temas claro e escuro, no Windows e no Linux.
+
+
+5. LEVE EM REPOUSO (TODOS OS APPS)
+----------------------------------
+
+Quando a pessoa não está usando, o aplicativo quase não gasta nada:
+
+- Fica perto do relógio (bandeja), quando faz sentido para o app. Fechar a
+  janela não encerra o app; "Sair" fica no menu do ícone.
+- A janela roda separada da parte que fica ligada: ao fechar a janela, ela sai
+  da memória de verdade (nada pesado fica rodando por trás).
+- Nada de ficar consultando sem parar: espere eventos. Atualizações de tela só
+  com a janela visível; com ela escondida, pare tudo.
+- Libere memória e placa de vídeo depois de um tempo sem uso (no Ignis: 10
+  minutos, e a pessoa pode mudar).
+- Uma instância só: abrir de novo traz a janela que já existe, sem duplicar.
+- "Abrir com o computador" como opção (abre minimizado, perto do relógio).
+- Meta de referência (o Ignis em repouso): cerca de 60 MB de memória e
+  processador perto de 0%. Meça antes de entregar, com a janela fechada.
+
+
+6. COMO BAIXAR E INSTALAR: TRÊS JEITOS, EM TODO APP
+---------------------------------------------------
+
+a) Jeito normal: baixar o arquivo na página do GitHub Releases.
+   Nomes fixos por sistema (troque <App> pelo nome do app):
+     <App>-Windows.exe          Windows 10 e 11 (instalador por usuário, não
+                                pede administrador)
+     <App>-Fedora.rpm           Fedora
+     <App>-Ubuntu-Debian.deb    Ubuntu, Debian, Linux Mint, Pop!_OS, Zorin
+     <App>-Linux.AppImage       universal: qualquer Linux, sem instalar (não
+                                precisa de libfuse2)
+     <App>-Flatpak.flatpak      universal: Fedora Atomic e qualquer distro com
+                                Flatpak
+     <App>-Matsu-OS.flatpak     Matsu OS (já abre com o visual dele)
+     instalar.sh                instalador pelo terminal (item b)
+     SHA256SUMS.txt             somas para conferir os arquivos
+   Abrir o arquivo baixado leva à loja de aplicativos do sistema (GNOME
+   Software, Discover) ou ao instalador do Windows.
+
+b) Pelo terminal: um comando que descobre o sistema, baixa o arquivo certo,
+   confere o SHA-256 e instala:
+     curl -fsSL https://github.com/<dono>/<App>/releases/latest/download/instalar.sh | bash
+   Ordem de escolha do instalar.sh:
+     Matsu OS                         -> <App>-Matsu-OS.flatpak
+     Fedora Atomic (ostree)           -> <App>-Flatpak.flatpak
+     Fedora                           -> <App>-Fedora.rpm
+     Ubuntu, Debian e derivados       -> <App>-Ubuntu-Debian.deb
+     outra distro com Flatpak         -> <App>-Flatpak.flatpak
+     o resto                          -> <App>-Linux.AppImage
+   Com --simular, só mostra o que faria. Modelo pronto: scripts/instalar.sh do
+   Ignis.
+
+c) Pelo gerenciador de pacotes, com o arquivo baixado:
+     sudo dnf install ./<App>-Fedora.rpm
+     sudo apt install ./<App>-Ubuntu-Debian.deb
+     flatpak install --user ./<App>-Flatpak.flatpak
+     flatpak install --user ./<App>-Matsu-OS.flatpak
+
+Página da versão no GitHub:
+- Organizada por sistema: Windows, Fedora, Fedora Atomic, Matsu OS,
+  Ubuntu/Debian e outras distros. O comando do terminal vai no topo. Modelo:
+  .github/release/notas.md do Ignis.
+- As versões de teste ficam separadas da oficial (artefatos do GitHub Actions).
+- Gerar não é publicar: só publique a versão oficial quando eu pedir.
+
+
+7. ATUALIZAR COM UM CLIQUE (TODOS OS APPS)
+------------------------------------------
+
+- Uma vez por dia, o app lê a lista pública de versões no GitHub
+  (releases/latest/download/atualizacoes.json). Nada sobre a pessoa é enviado,
+  e dá para desligar nas configurações.
+- Versão nova: notificação do sistema, item "Atualizar para a versão X" no
+  menu do ícone e uma faixa "Atualizar agora" na janela.
+- No clique: baixa só o arquivo do tipo de instalação daquele computador,
+  confere o SHA-256 pelo SHA256SUMS.txt, fecha, instala e abre de novo.
+  Nunca no meio de um trabalho em andamento.
+- Como instalar, por tipo:
+    Windows        instalador com /S (silencioso), depois abre o app
+    Fedora (rpm)   pkexec dnf install -y (o sistema pede a senha)
+    Ubuntu (deb)   pkexec apt-get install -y (o sistema pede a senha)
+    AppImage       troca o arquivo e abre de novo
+    Flatpak e
+    Matsu OS       flatpak-spawn --host flatpak install --reinstall --bundle,
+                   depois flatpak run
+    Fedora Atomic
+    (rpm em camada) rpm-ostree; a versão nova entra ao reiniciar o computador
+- O Flatpak precisa destas permissões:
+    --talk-name=org.freedesktop.Flatpak         (para instalar a versão nova)
+    --talk-name=org.freedesktop.Notifications   (para o aviso)
+- Se o clique falhar, mostre o comando para instalar à mão o arquivo já
+  baixado.
+- Modelo pronto: crates/ignis-core/src/atualizador.rs do Ignis.
+
+
+8. REGRAS GERAIS
+----------------
+
+- Tudo em português do Brasil.
+- Mesmo visual, mesmos recursos e mesma otimização no Windows e no Linux.
+- Sem telemetria.
+- Teste no Windows e no Linux antes de entregar. Não diga que algo funciona
+  numa máquina ou placa que não foi testada.
+
+
+9. ONDE VER PRONTO (REPOSITÓRIO DO IGNIS)
+-----------------------------------------
+
+https://github.com/kaikydev1-jpg/Ignis
+- docs/BARRA_DE_TITULO_INTEGRADA.md     barra integrada, explicada
+- crates/ignis-core/src/distro.rs       reconhecer o Matsu OS
+- crates/ignis-core/src/janela.rs       escolher o estilo dos botões
+- app/ui/app.js e app/ui/style.css      desenho dos botões (Windows, GNOME,
+                                        KDE, Mac e Matsu OS)
+- scripts/instalar.sh                   instalador pelo terminal
+- .github/workflows/instaladores.yml    gerar e publicar os arquivos por sistema
+- .github/release/notas.md              página da versão por sistema
+- crates/ignis-core/src/atualizador.rs  atualizar com um clique
+
+
+10. RESUMO PARA COLAR (VERSÃO CURTA)
+------------------------------------
+
+Siga o padrão dos meus aplicativos:
+(1) Reconheça o meu sistema, o Matsu OS ("Matsu 27 OS", o número muda todo
+    ano; base Fedora Atomic), pelo os-release (no Flatpak, /run/host/os-release),
+    e aplique o visual dele: bolinhas de 12 px #ff5f57, #febc2e, #28c840,
+    símbolos #4d0000, #995700, #006500 ao passar o mouse, cinza sem foco
+    (#59545d escuro, #c9c9cf claro).
+(2) Barra de título integrada no Windows e no Linux, sem a barra cinza do
+    sistema; no Linux, botões seguindo o gtk-decoration-layout.
+(3) Leve em repouso: bandeja, janela em processo separado, sem consultas sem
+    parar, libera memória parado, instância única.
+(4) Três jeitos de instalar: arquivos por sistema no GitHub (incluindo
+    <App>-Matsu-OS.flatpak, AppImage e Flatpak universais), instalar.sh pelo
+    terminal e o gerenciador de pacotes.
+(5) Atualizar com um clique em todas as versões, conferindo o SHA-256.
+(6) Português, sem telemetria, testado no Windows e no Linux; publicar só
+    quando eu pedir.
+Mando junto um print do Matsu OS: siga ele para o resto do visual.
