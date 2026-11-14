@@ -57,14 +57,19 @@ Não instala nada e não precisa de libfuse2. Também dá para usar o Flatpak.
 
 Fechar a janela deixa o Ignis perto do relógio. Para encerrar, use **Sair** no menu do ícone.
 
-## O que vem nesta versão
+## Novo nesta versão
+- **Voz e transcrição pelo Ignis.** Fala com o **OmniVoice** (com clonagem de voz) e transcreve com o **Whisper**, na placa (AMD, NVIDIA ou Intel, pelo Vulkan) ou no processador, se a placa não der conta. Mesmo formato da OpenAI: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations` e `/v1/audio/voices`. Na janela, a nova seção **Voz** prepara, toca um teste e guarda vozes clonadas.
+- **Atualizar com um clique.** O Ignis avisa com uma notificação quando sai versão nova (uma vez por dia; dá para desligar) e instala sozinho, sem baixar nada à mão: Windows, Fedora (.rpm), Ubuntu/Debian (.deb), AppImage, Flatpak, Matsu OS e Fedora Atomic. Ele confere o SHA-256 antes de instalar e abre de novo na versão nova.
+- **Licença da voz:** o modelo OmniVoice é **CC BY-NC 4.0** (uso não comercial). O Whisper é MIT. O Ignis mostra isso antes de baixar.
+
+## Tudo o que o Ignis faz
 - **Placa e motor:** detecta a placa (fabricante, modelo, memória de vídeo, driver) e escolhe sozinho o motor mais rápido (ROCm, CUDA, Vulkan ou processador). Se um motor falhar, passa para o próximo.
 - **Modelos:** catálogo filtrado pela sua placa e **qualquer modelo GGUF do Hugging Face**, inclusive os que pedem aceite dos termos (com a sua conta) e os que entendem imagem e áudio. **Não precisa do Ollama** (dá para trazer modelos de lá, se quiser).
 - **Memória:** calcula quanto do modelo cabe na placa, avisa antes quando não cabe e libera a placa depois de 10 minutos parado.
 - **API local** compatível com a OpenAI: streaming, botão Parar, embeddings e ferramentas. Só responde neste computador.
 - **Janela:** barra de título integrada, com os botões no jeito de cada sistema (Windows 11; no Linux, bolinhas estilo Mac, GNOME ou KDE, conforme o seu; no Matsu OS, as cores exatas do sistema); temas claro e escuro.
 - **Leve:** cerca de 60 MB de memória e processador perto de 0% quando parado.
-- **Privado:** sem telemetria. Só se conecta ao GitHub (motores) e ao Hugging Face (modelos), quando você pede.
+- **Privado:** sem telemetria. Só se conecta ao GitHub (motores e aviso de versão nova) e ao Hugging Face (modelos). Nada sobre você é enviado.
 
 ## Para desenvolvedores
 - Contrato da API: [CONTRATO_VALKODE.md](https://github.com/kaikydev1-jpg/Ignis/blob/v{{VERSAO}}/CONTRATO_VALKODE.md)

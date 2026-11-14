@@ -14,12 +14,15 @@ import sys
 raiz = pathlib.Path(__file__).resolve().parent.parent
 versao = sys.argv[1].lstrip("v")
 saida = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "atualizacoes.json")
+arquivo_resumo = raiz / ".github/release/resumo.txt"
+resumo = arquivo_resumo.read_text(encoding="utf-8").strip() if arquivo_resumo.exists() else ""
 dados = {
     "versao_manifesto": 1,
     "app": {
         "versao": versao,
         "pagina": f"https://github.com/kaikydev1-jpg/Ignis/releases/tag/v{versao}",
-        "notas": "",
+        # uma linha do que mudou: aparece na faixa "versão nova" da janela
+        "notas": resumo,
     },
     "motores": json.loads((raiz / "manifest/motores.json").read_text(encoding="utf-8")),
     "catalogo": json.loads((raiz / "manifest/catalogo.json").read_text(encoding="utf-8")),

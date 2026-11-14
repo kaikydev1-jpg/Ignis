@@ -90,6 +90,15 @@ aceitam mensagens no formato da OpenAI, repassadas ao llama-server com `--mmproj
 - imagem: `{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}`;
 - áudio (só modelos que entendem áudio): `{"type":"input_audio","input_audio":{"data":"<base64>","format":"wav"}}` (`wav` ou `mp3`).
 
+### Voz e transcrição (desde a 0.3.0)
+Precisam ser preparadas uma vez (janela → **Voz**, ou `POST /motor/audio/preparar`).
+Sem preparar: `503` com `code: "audio_nao_preparado"`. Detalhes e exemplos em
+[docs/IGNIS_PARA_AZURIA.md](docs/IGNIS_PARA_AZURIA.md).
+- `POST /v1/audio/speech` — JSON `{"input", "voice"?, "language"?, "response_format": "wav"|"pcm", "seed"?}` → `audio/wav` 24 kHz (OmniVoice, licença CC BY-NC 4.0).
+- `GET/POST /v1/audio/voices`, `DELETE /v1/audio/voices/{nome}` — vozes clonadas `{"name", "ref_text", "wav_b64"}`, guardadas pelo Ignis.
+- `POST /v1/audio/transcriptions` e `/v1/audio/translations` — multipart igual à OpenAI (`file`, `language`, `response_format`: `json`/`text`/`srt`/`vtt`/`verbose_json`) (Whisper, MIT).
+- Em `GET /v1/models` aparecem `omnivoice` (`"tipo": "voz"`) e `whisper-1` (`"tipo": "transcricao"`) quando preparados.
+
 ### `POST /v1/embeddings`
 Só com modelo de embeddings (ex.: `qwen3-embedding-0.6b`). Sem `model` → usa o
 modelo de embeddings instalado. Modelo de conversa → 400 explicando.
@@ -137,8 +146,12 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `POST /motor/detectar` | Detecta a placa de novo |
 | `GET /motor/motores` | Candidatos (disponível/instalado/motivo/dica), ordem de uso, motor forçado |
 | `POST /motor/motores/forcar` `{"variante":"linux-vulkan"}` ou `{"variante":null}` | Força um motor (ou volta ao automático) |
-| `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes_sozinho`, `llama_server_proprio`, `modelo_padrao`, `botoes_janela`: `auto`/`windows`/`gnome`/`kde`/`mac`/`matsu`) |
-| `GET /motor/atualizacoes`, `POST /motor/atualizacoes/procurar`, `POST /motor/atualizacoes/aplicar` `{"item":"motor"\|"catalogo"}` | Atualizações (nunca no meio de uma conversa) |
+| `GET /motor/audio` | Voz e transcrição: `preparado`, `falta_baixar`, `modelo` (com `licenca` e `uso_comercial`), `motores`, `rodando`; e `vozes` |
+| `POST /motor/audio/preparar` `{"familias":["voz","transcricao"]}` | Baixa os motores (Vulkan e processador) e o modelo de cada família |
+| `POST /motor/audio/descarregar` | Tira a voz e a transcrição da memória |
+| `POST /motor/audio/teste` `{"texto"?, "voz"?}` | Gera uma fala de teste: `{"wav_b64", "segundos", "motor", "modelo"}` |
+| `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes` (aviso de versão nova uma vez por dia, ligado por padrão; o nome antigo `procurar_atualizacoes_sozinho` ainda é aceito), `llama_server_proprio`, `modelo_padrao`, `botoes_janela`: `auto`/`windows`/`gnome`/`kde`/`mac`/`matsu`) |
+| `GET /motor/atualizacoes`, `POST /motor/atualizacoes/procurar`, `POST /motor/atualizacoes/aplicar` `{"item":"app"\|"motor"\|"catalogo"}` | Atualizações (nunca no meio de uma conversa). `"app"` baixa a versão nova do Ignis para o tipo de instalação (`instalacao` em `/motor/estado`), confere o SHA-256, fecha, instala e abre de novo |
 | `GET /motor/hf/buscar?q=qwen3` | Busca qualquer modelo GGUF no Hugging Face (`repo`, `downloads`, `licenca`, `pede_aceite`, `multimodal`) |
 | `GET /motor/hf/repo?repo=dono/nome` | Versões (quantizações) de um repositório, com tamanho, partes, arquivo de visão/áudio (`mmproj`) e uma estimativa de "cabe na placa" |
 | `POST /motor/hf/info` `{"repo","revisao","arquivo"}` | Lê o cabeçalho do arquivo pela internet (sem baixar tudo) e diz exatamente se cabe |

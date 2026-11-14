@@ -20,6 +20,11 @@ vídeo do melhor jeito possível.
 - **Modelos:** catálogo filtrado pela sua placa ou **qualquer modelo GGUF do
   Hugging Face**, inclusive os que pedem aceite dos termos (com a conta de cada
   pessoa). **Não precisa do Ollama.**
+- **Voz e transcrição (0.3.0):** fala com o OmniVoice (com clonagem de voz) e
+  transcreve com o Whisper, na placa pelo Vulkan (AMD, NVIDIA e Intel) ou no
+  processador. Guia completo para o Azúria: `docs/IGNIS_PARA_AZURIA.md`.
+- **Atualiza sozinho:** avisa quando sai versão nova e instala com um clique,
+  em todas as versões (Windows, Linux e Matsu OS).
 - **Leve:** fica perto do relógio, ≈60 MB de memória e processador perto de 0%
   quando parado. Libera a placa sozinho depois de 10 minutos sem uso.
 - **Privado:** sem telemetria, e a API só responde neste computador.
@@ -288,10 +293,13 @@ A lista completa está no contrato (link na seção 2).
 
 ## 6. Notas para o Azura Voice
 
-- **O que o Ignis faz:** a parte de texto, o "cérebro" que entende e responde.
-- **O que ele ainda não faz:** voz sintetizada (TTS) e transcrição dedicada
-  (tipo Whisper). O Azura Voice continua usando o que já usa para ouvir e
-  falar. Modelos que entendem áudio direto estão na seção 5.6.
+- **O que o Ignis faz:** a parte de texto (o "cérebro" que entende e responde)
+  e, desde a 0.3.0, a **voz** (OmniVoice, com clonagem) e a **transcrição**
+  (Whisper), na placa. O contrato completo, com o motor `ignis-tts` e o
+  interruptor "Usar a placa pelo Ignis", está em `docs/IGNIS_PARA_AZURIA.md`.
+- **O que ele não faz:** música e efeitos sonoros (ACE-Step, MusicGen, Stable
+  Audio, AudioLDM2): não existe versão GGML desses modelos; ficam no PyTorch
+  do Azúria.
 - **Para responder rápido:**
   - modelo pequeno (Qwen3 4B);
   - `stream: true`;
@@ -324,7 +332,8 @@ A lista completa está no contrato (link na seção 2).
 
 ## 8. Limites e o que falta provar
 
-- **Ainda não faz:** voz sintetizada, transcrição dedicada, geração de imagem.
+- **Ainda não faz:** música, efeitos sonoros e geração de imagem.
+- **Voz:** o modelo OmniVoice é CC BY-NC 4.0 (uso não comercial).
 - **Um modelo carregado por vez.**
 - **Falta provar em placa de vídeo real:** os testes em AMD (ROCm e Vulkan) e
   NVIDIA (CUDA) estão em `TESTE_DO_CRIADOR.md`. O que foi provado sem placa:

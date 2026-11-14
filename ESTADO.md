@@ -3,13 +3,17 @@
 > Toda retomada começa por aqui. Atualizado antes de cada pausa.
 
 ## Situação
-**Versão oficial 0.1.1 publicada** (GitHub Releases, sem login e sem prazo; a 0.1.0 continua lá):
+**Versão oficial 0.3.0** (GitHub Releases, sem login e sem prazo; as anteriores continuam lá):
 https://github.com/kaikydev1-jpg/Ignis/releases/latest, com arquivos por sistema
 (`Ignis-Windows.exe`, `Ignis-Fedora.rpm`, `Ignis-Flatpak.flatpak`, `Ignis-Ubuntu-Debian.deb`,
 `Ignis-Linux.AppImage`, `Ignis-Matsu-OS.flatpak`, `instalar.sh`, `SHA256SUMS.txt`, `atualizacoes.json`).
-Instalador pelo terminal (`scripts/instalar.sh`): descobre o sistema, baixa a versão certa, confere o SHA-256 e instala. Testado de verdade com o comando publicado (`curl … instalar.sh | bash`) simulando o Matsu 27 OS: instalou o `Ignis-Matsu-OS.flatpak` 0.1.1; também o download+conferência do RPM.
+Novo na 0.3.0: **voz** (OmniVoice, com clonagem) e **transcrição** (Whisper) na placa pelo Vulkan
+ou no processador (motores na release `motores-audio-1`), e **atualizar com um clique** em todos os
+tipos de instalação, com aviso diário de versão nova.
+Instalador pelo terminal (`scripts/instalar.sh`): descobre o sistema, baixa a versão certa, confere o SHA-256 e instala.
 Versões de teste continuam separadas: Actions → **Instaladores** (90 dias, pede login).
-Próximo passo: o criador roda o TESTE_DO_CRIADOR.md na placa real.
+Próximo passo: o criador instala a 0.3.0, roda o TESTE_DO_CRIADOR.md (seções 10 e 11 são as novas) e passa o
+`docs/IGNIS_PARA_AZURIA.md` para o chat do Azúria Voice.
 
 ## O que está pronto
 - **Núcleo** (`crates/ignis-core`):
@@ -25,11 +29,12 @@ Próximo passo: o criador roda o TESTE_DO_CRIADOR.md na placa real.
   - descarregar por tempo parado e pausar/retomar;
   - API local compatível com a OpenAI (streaming, Parar, embeddings) e rotas `/motor/*`, só em 127.0.0.1, com proteção de Host/Origin;
   - abrir com o computador (Run do Windows, `.desktop` no Linux, AppImage e Flatpak);
-  - atualizações separadas (app, motores, catálogo);
+  - atualizações separadas (app, motores, catálogo); o app **atualiza com um clique** (`atualizador.rs`): descobre o tipo de instalação (Windows/NSIS, RPM, deb, AppImage, Flatpak, Matsu OS, Fedora Atomic com RPM em camada), baixa só o arquivo dele da versão oficial, confere pelo `SHA256SUMS.txt` e a bandeja fecha, instala e reabre (Fedora Atomic: `rpm-ostree`, entra ao reiniciar); procura versão nova uma vez por dia (pode desligar), com notificação do sistema e item no menu do ícone;
+  - **voz e transcrição** (`audio.rs`, `service_audio.rs`): omnivoice.cpp (`tts-server`) e whisper.cpp (`whisper-server`) compilados no CI (`motores-audio.yml`) em Vulkan e processador, modelos do Hugging Face com revisão e SHA-256 fixados, quantização pela memória de vídeo, sobe sob demanda, cai para o processador se a placa falhar, descarrega parado; API da OpenAI `/v1/audio/*` e vozes clonadas guardadas;
   - dicas por distro (dnf, rpm-ostree, apt, pacman, zypper).
 - **Aplicativo** (`app/`, Tauri 2):
-  - ícone na bandeja com menu Abrir / Modelo / Pausar-Retomar / Descarregar modelo / Sair;
-  - janela clássica em português (Placa, Modelos, Motor, Status), clara ou escura conforme o sistema;
+  - ícone na bandeja com menu Abrir / Modelo / Pausar-Retomar / Descarregar modelo / Procurar atualizações (vira "Atualizar para a versão X") / Sair;
+  - janela clássica em português (Placa, Modelos, Voz, Motor, Status), clara ou escura conforme o sistema, com faixa "versão nova disponível — Atualizar agora";
   - janela em **processo separado** (núcleo leve em repouso);
   - instância única.
 - **Qualquer modelo do Hugging Face**:
@@ -76,6 +81,11 @@ Próximo passo: o criador roda o TESTE_DO_CRIADOR.md na placa real.
 | Escolha do motor pelo modelo (pedido do Valkode) | placa simulada reproduzindo a RX 580: teste pequeno dá processador, modelo grande que cabe vai para a placa ("o modelo cabe na placa"); medidas de uso real e "Testar velocidade" com o modelo decidem depois; motor escolhido à mão troca no próximo pedido |
 | Carga do motor (llama-server oficial, CPU, Qwen3 0.6B) | pelo Ignis 1,9–2,1 s; direto 1,5–1,6 s (o Ignis acrescenta ~0,4 s). A 1ª carga direta, com o arquivo fora da memória, levou 23,5 s: a diferença do relatório (137 s × 76 s) é carga fria/driver, não o Ignis |
 | Modelos já no computador | mesmo arquivo do catálogo no cache do Hugging Face achado pelo SHA-256 e usado sem baixar; "Preparar" usa um modelo pequeno do LM Studio para o teste; lista Ollama + Hugging Face + LM Studio |
+| Voz real no CI (omnivoice.cpp, processador) | Linux e Windows: gerou fala em português ("Olá! Este é um teste do motor de voz do Ignis.", ~134 KB de WAV, 26–43 s no processador do CI) |
+| Transcrição real no CI (whisper.cpp, processador) | Linux: transcreveu exatamente "Olá! Este é um teste do motor de voz do Ignis." a partir da fala gerada |
+| Motores de áudio Vulkan sem placa (lavapipe) | sobem, não acham placa e seguem no processador gerando áudio |
+| Voz/transcrição pelo Ignis (servidores simulados) | falar com voz clonada, transcrever, traduzir, `/v1/models`, teste da janela, voz recusada não é guardada, apagar voz; placa falha → processador; sem preparar → 503 claro; descarrega parado |
+| Atualizar com um clique (versão oficial simulada) | soma errada na lista → recusa e não mexe em nada; soma certa → troca o AppImage e pede para fechar e reabrir com o comando certo |
 | Flatpak de verdade | instalou, rodou, leu a distro real do sistema (`/run/host`), gravou o autostart com `flatpak run` e rodou o llama-server oficial dentro do sandbox (41 tokens/s) |
 
 ## O que só a placa real prova
@@ -85,17 +95,22 @@ Está em **TESTE_DO_CRIADOR.md**:
 - abrir com o computador depois de reiniciar;
 - importar do Ollama real;
 - ligar no Valkode;
-- capturar saídas reais de vulkaninfo/rocminfo/nvidia-smi para trocar as fixtures.
+- capturar saídas reais de vulkaninfo/rocminfo/nvidia-smi para trocar as fixtures;
+- **voz e transcrição na placa de verdade** (RX 580 e outras pelo Vulkan): o CI só tem processador;
+- **atualizar com um clique** em cada sistema de verdade (Windows, Fedora, Ubuntu, AppImage, Flatpak, Matsu OS, Fedora Atomic): o primeiro teste real é da 0.3.0 para a próxima versão.
 
 ## Próxima ação exata
-1. O criador roda o TESTE_DO_CRIADOR.md nas máquinas reais e manda o resultado (e o "Copiar relatório" onde algo der diferente).
-2. Trocar as fixtures de detecção pelas saídas reais capturadas (vulkaninfo/rocminfo/nvidia-smi).
-3. Quando o chat do Azura Voice disser o que falta no motor, atualizar o Ignis.
-4. Nova versão: subir `version` nos Cargo.toml/tauri.conf.json e rodar o workflow **Instaladores** à mão com "publicar = sim" (ou "rascunho" para revisar antes).
+1. O criador instala a 0.3.0, roda o TESTE_DO_CRIADOR.md (seções 10, voz e transcrição, e 11, atualização) e manda o resultado (e o "Copiar relatório" onde algo der diferente).
+2. O criador passa o `docs/IGNIS_PARA_AZURIA.md` (seção 7 tem o texto pronto) para o chat do Azúria Voice.
+3. Trocar as fixtures de detecção pelas saídas reais capturadas (vulkaninfo/rocminfo/nvidia-smi).
+4. Nova versão: subir `version` nos Cargo.toml/tauri.conf.json, trocar `.github/release/resumo.txt` (uma linha, aparece na faixa de versão nova) e as notas, e rodar o workflow **Instaladores** à mão com "publicar = sim". Quem tem a 0.3.0 recebe o aviso e atualiza com um clique.
+5. Motores de áudio novos: rodar **Motores de áudio** com "publicar = sim" numa release nova (`motores-audio-N`) e atualizar `manifest/motores_audio.json` com os SHA-256 do `SHA256SUMS.txt`.
 
 ## Pendente com o criador
-- **Azura Voice** e **Valkode** (apps do criador): vão se conectar ao Ignis pela API. O **BRIEFING.md** explica tudo para eles (instalar, usar, ligar) e pede de volta, num formato fixo, a lista do que falta no motor. Aguardando essa lista para atualizar o Ignis.
-- Modelos de gerar voz/música (TTS etc.) não rodam no llama.cpp; se o Azura Voice precisar, vira uma opção futura de "motor de áudio".
+- **Azúria Voice:** o chat dele vai ligar o Ignis (LLM, voz `ignis-tts`, transcrição) junto com a mudança de visual. Guia: `docs/IGNIS_PARA_AZURIA.md`.
+- **Valkode:** já tem o contrato (CONTRATO_VALKODE.md) e a resposta ao pedido do teste do motor.
+- **Música e efeitos sonoros** (ACE-Step, MusicGen, Stable Audio, AudioLDM2): não há versão GGML desses modelos; continuam no PyTorch do Azúria.
+- **Voz CUDA/ROCm:** a 0.3.0 usa Vulkan (AMD, NVIDIA e Intel) e processador. Versões CUDA e ROCm do omnivoice.cpp ficam para depois, se o Vulkan não bastar na NVIDIA.
 
 ## Decisões tomadas
 | Assunto | Decisão | Motivo |

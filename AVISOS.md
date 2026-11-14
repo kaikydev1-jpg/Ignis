@@ -19,6 +19,16 @@ de outros projetos, listadas abaixo com suas licenças.
 - No Linux, o ROCm vem dos repositórios oficiais da distribuição (ex.: Fedora:
   `rocm-hip`, `hipblas`, `rocblas`), instalados pela pessoa.
 
+## Voz e transcrição (desde a 0.3.0)
+- **omnivoice.cpp** (https://github.com/ServeurpersoCom/omnivoice.cpp, MIT) e
+  **whisper.cpp** (https://github.com/ggml-org/whisper.cpp, MIT), compilados pelo
+  CI do Ignis a partir de commits fixados e publicados na release
+  `motores-audio-1`, com SHA-256 em `manifest/motores_audio.json`. Baixados só
+  quando a pessoa prepara a voz ou a transcrição.
+- Pesos da voz: **OmniVoice** (`Serveurperso/OmniVoice-GGUF`) — licença
+  **CC BY-NC 4.0, uso não comercial**. O Ignis mostra isso antes de baixar.
+- Pesos da transcrição: **Whisper** (`ggerganov/whisper.cpp`, modelos da OpenAI) — **MIT**.
+
 ## Modelos (cada um com sua licença)
 O Ignis não leva modelos. Ao baixar, a janela mostra a licença de cada um (com
 link). Catálogo atual (`manifest/catalogo.json`):
@@ -66,6 +76,16 @@ O ícone de chama do Ignis foi desenhado para o projeto (licença MIT, como o re
 
 ## Privacidade
 Sem telemetria. As únicas conexões externas são:
-- GitHub Releases (`github.com`), para baixar motores e o manifesto de atualizações;
-- Hugging Face (`huggingface.co`), para baixar modelos;
-sempre por ação da pessoa (ou atualização aceita / verificação semanal ligada por ela).
+- GitHub Releases (`github.com`), para baixar motores, a lista de versões e a versão nova;
+- Hugging Face (`huggingface.co`), para baixar modelos.
+
+Downloads só por ação da pessoa. A única conexão sozinha é ler, uma vez por
+dia, a lista pública de versões (`atualizacoes.json`) para avisar de versão
+nova; nada sobre a pessoa é enviado e dá para desligar em Motor → Atualizações.
+A versão nova só é instalada com o clique da pessoa.
+
+**Flatpak:** para atualizar com um clique, o Flatpak do Ignis tem permissão de
+pedir ao Flatpak do sistema que instale a versão nova
+(`--talk-name=org.freedesktop.Flatpak`). Essa permissão deixa o Ignis rodar
+comandos fora da caixa de areia do Flatpak; ele só usa para instalar o arquivo
+da versão oficial, depois de conferir o SHA-256.

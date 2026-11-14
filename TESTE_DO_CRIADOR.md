@@ -172,3 +172,32 @@ nvidia-smi --query-gpu=name,memory.total,memory.free,driver_version,pci.device_i
 ```
 Também vale a saída de `ignis-cli detectar` (compilado a partir do código) ou o
 **Copiar relatório** da janela.
+
+## 10. Voz e transcrição (novo na 0.3.0)
+1. Na janela, abra **Voz** e clique em **Preparar voz e transcrição**. Aparece o aviso da licença do OmniVoice (CC BY-NC 4.0, uso não comercial); confirme.
+   - **Esperado:** baixa os motores (Vulkan e processador) e os modelos; na RX 580 (8 GB), a voz usa o **OmniVoice Q8_0** e a transcrição o **Whisper large-v3 turbo**.
+2. Em **Ouvir**, clique em **Ouvir**.
+   - **Esperado:** a primeira vez demora mais (carrega o modelo); a fala toca em português e a situação mostra **"Na memória: placa (Vulkan)"**. Anote o tempo que aparece embaixo ("Gerado em N s").
+   - Se aparecer **"Na memória: processador"** com o aviso "A voz não subiu na placa; usando o processador", mande o **Copiar relatório** (Placa) e a pasta de registros.
+3. **Clonar uma voz:** em **Clonar uma voz**, dê um nome, escreva o que você fala na gravação e escolha um WAV seu de 5 a 15 s. Salve, escolha a voz em **Ouvir** e clique em **Ouvir**.
+   - **Esperado:** a fala sai parecida com a sua voz. Feche o Ignis (Sair), abra de novo: a voz continua na lista.
+4. **Transcrição pelo terminal** (troque `fala.wav` por um áudio seu):
+```bash
+curl http://127.0.0.1:11470/v1/audio/transcriptions -F file=@fala.wav -F language=pt -F response_format=verbose_json
+```
+   - **Esperado:** o texto do áudio, com os trechos e os tempos.
+5. Espere o tempo de "descarregar" (Motor; 10 min por padrão) sem usar.
+   - **Esperado:** aviso "descarregado" e a memória de vídeo volta (veja em Placa).
+
+## 11. Atualizar com um clique (novo na 0.3.0)
+A primeira atualização de verdade será da 0.3.0 para a próxima versão. Quando ela sair:
+1. Com o Ignis aberto (perto do relógio), espere até um dia ou clique no ícone → **Procurar atualizações**.
+   - **Esperado:** notificação do sistema "Versão X disponível…", o item do menu vira **"Atualizar para a versão X"** e a janela mostra a faixa **Atualizar agora**.
+2. Clique em **Atualizar agora** (ou no item do menu).
+   - **Windows:** o Ignis fecha, instala sozinho e abre de novo.
+   - **Fedora (.rpm) e Ubuntu/Debian (.deb):** o sistema pede a sua senha; depois o Ignis abre de novo.
+   - **AppImage:** troca o arquivo e abre de novo.
+   - **Flatpak e Matsu OS:** fecha, o Flatpak instala e o Ignis abre de novo.
+   - **Fedora Atomic com o RPM em camada:** pede a senha e avisa "Reinicie o computador para usar a versão nova".
+3. Em **Motor → Sobre**, confira o número da versão nova.
+   - Se algo falhar, a janela mostra o comando para instalar à mão o arquivo que já foi baixado. Mande a mensagem e a pasta de registros.

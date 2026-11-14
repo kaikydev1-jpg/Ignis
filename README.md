@@ -67,14 +67,20 @@ Cada mudança no código gera instaladores de teste automaticamente, separados d
   - busca dentro do app, com versões, tamanho e "cabe na sua placa?" (lendo o cabeçalho, sem baixar tudo);
   - modelos em várias partes e modelos que entendem imagem/áudio (arquivo `mmproj`);
   - modelos que pedem aceite dos termos usam a conta de cada pessoa (token guardado só no computador).
+- **Voz e transcrição** (novo na 0.3.0):
+  - fala com o **OmniVoice**, com **clonagem de voz** (licença CC BY-NC 4.0: uso não comercial);
+  - transcreve e traduz com o **Whisper** (MIT);
+  - na placa pelo **Vulkan** (AMD, NVIDIA e Intel) ou no processador, se a placa não der conta;
+  - mesmo formato da OpenAI: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/voices`.
+- **Atualiza com um clique** (novo na 0.3.0): avisa com uma notificação quando sai versão nova e instala sozinho, conferindo o SHA-256, em todas as versões (Windows, Fedora, Ubuntu/Debian, AppImage, Flatpak, Matsu OS e Fedora Atomic).
 - **Orçamento de memória:** escolhe quantas camadas vão para a placa e o tamanho do contexto pela VRAM livre, e avisa antes quando o modelo não cabe.
 - **Libera a placa:** descarrega o modelo depois de 10 min parado (configurável), para jogos e outros programas.
 - **API local** em `http://127.0.0.1:11470` (só no seu computador):
-  - compatível com a OpenAI: `/v1/models`, `/v1/chat/completions` (com streaming e Parar), `/v1/embeddings`;
+  - compatível com a OpenAI: `/v1/models`, `/v1/chat/completions` (com streaming e Parar), `/v1/embeddings` e `/v1/audio/*`;
   - rotas próprias em `/motor/*`. Contrato: [CONTRATO_VALKODE.md](CONTRATO_VALKODE.md).
 - **Janela:** barra de título integrada, com os botões no jeito de cada sistema (Windows 11; no Linux, bolinhas estilo Mac, GNOME ou KDE, conforme o seu; no Matsu OS, as cores exatas do sistema); temas claro e escuro.
 - **Leve em repouso:** ≈60 MB de RAM e ≈0% de processador sem modelo carregado.
-- **Sem telemetria.** Só se conecta ao GitHub (motores) e ao Hugging Face (modelos), por ação sua.
+- **Sem telemetria.** Só se conecta ao GitHub (motores, versões) e ao Hugging Face (modelos). Sozinho, só lê uma vez por dia a lista pública de versões para avisar de versão nova (dá para desligar); nada sobre você é enviado.
 
 ## ROCm no Linux (opcional)
 Sem fazer nada, as placas AMD já usam o Vulkan. O ROCm vem dos repositórios da distro e às vezes é mais rápido:
