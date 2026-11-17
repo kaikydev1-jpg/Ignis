@@ -58,6 +58,11 @@ Não instala nada e não precisa de libfuse2. Também dá para usar o Flatpak.
 Fechar a janela deixa o Ignis perto do relógio. Para encerrar, use **Sair** no menu do ícone.
 
 ## Novo nesta versão
+- **Mais conversa na mesma placa.** A memória da conversa pode ser guardada em **8 bits** (ocupa metade e cabe quase o dobro), com volta automática para 16 bits se a placa não aceitar. O tamanho **automático** usa o maior que cabe na sua placa, deixando 1 GB livre para jogos: quanto mais forte a placa, maior.
+- **Barra da memória da conversa** em cada modelo, como no LM Studio: arraste e veja quantos GB vai usar da placa e se cabe com folga.
+- **Para os aplicativos (Valkode, Azúria):** o Ignis informa o contexto que carregou de verdade, o tipo de cache e se a atenção rápida está ligada; `POST /motor/carregar` aceita `contexto` e `cache_kv`.
+
+## Na versão 0.3.0
 - **Voz e transcrição pelo Ignis.** Fala com o **OmniVoice** (com clonagem de voz) e transcreve com o **Whisper**, na placa (AMD, NVIDIA ou Intel, pelo Vulkan) ou no processador, se a placa não der conta. Mesmo formato da OpenAI: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations` e `/v1/audio/voices`. Na janela, a nova seção **Voz** prepara, toca um teste e guarda vozes clonadas.
 - **Atualizar com um clique.** O Ignis avisa com uma notificação quando sai versão nova (uma vez por dia; dá para desligar) e instala sozinho, sem baixar nada à mão: Windows, Fedora (.rpm), Ubuntu/Debian (.deb), AppImage, Flatpak, Matsu OS e Fedora Atomic. Ele confere o SHA-256 antes de instalar e abre de novo na versão nova.
 - **Licença da voz:** o modelo OmniVoice é **CC BY-NC 4.0** (uso não comercial). O Whisper é MIT. O Ignis mostra isso antes de baixar.

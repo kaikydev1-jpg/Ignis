@@ -73,6 +73,7 @@ Cada mudança no código gera instaladores de teste automaticamente, separados d
   - na placa pelo **Vulkan** (AMD, NVIDIA e Intel) ou no processador, se a placa não der conta;
   - mesmo formato da OpenAI: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/audio/voices`.
 - **Atualiza com um clique** (novo na 0.3.0): avisa com uma notificação quando sai versão nova e instala sozinho, conferindo o SHA-256, em todas as versões (Windows, Fedora, Ubuntu/Debian, AppImage, Flatpak, Matsu OS e Fedora Atomic).
+- **Memória da conversa** (novo na 0.3.1): tamanho automático pelo que cabe na placa (deixa 1 GB livre para jogos), opção de guardar em 8 bits (cabe quase o dobro) e uma barra em cada modelo, como no LM Studio, que mostra quantos GB vai usar.
 - **Orçamento de memória:** escolhe quantas camadas vão para a placa e o tamanho do contexto pela VRAM livre, e avisa antes quando o modelo não cabe.
 - **Libera a placa:** descarrega o modelo depois de 10 min parado (configurável), para jogos e outros programas.
 - **API local** em `http://127.0.0.1:11470` (só no seu computador):

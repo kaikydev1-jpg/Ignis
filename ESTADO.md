@@ -3,11 +3,12 @@
 > Toda retomada começa por aqui. Atualizado antes de cada pausa.
 
 ## Situação
-**Versão oficial 0.3.0** (GitHub Releases, sem login e sem prazo; as anteriores continuam lá):
+**Versão oficial 0.3.1** (GitHub Releases, sem login e sem prazo; as anteriores continuam lá):
 https://github.com/kaikydev1-jpg/Ignis/releases/latest, com arquivos por sistema
 (`Ignis-Windows.exe`, `Ignis-Fedora.rpm`, `Ignis-Flatpak.flatpak`, `Ignis-Ubuntu-Debian.deb`,
 `Ignis-Linux.AppImage`, `Ignis-Matsu-OS.flatpak`, `instalar.sh`, `SHA256SUMS.txt`, `atualizacoes.json`).
-Novo na 0.3.0: **voz** (OmniVoice, com clonagem) e **transcrição** (Whisper) na placa pelo Vulkan
+Novo na 0.3.1: memória da conversa em 8 bits, contexto automático pelo que cabe na placa, contexto real informado aos apps (pedido do Valkode) e barra da memória da conversa por modelo.
+Na 0.3.0: **voz** (OmniVoice, com clonagem) e **transcrição** (Whisper) na placa pelo Vulkan
 ou no processador (motores na release `motores-audio-1`), e **atualizar com um clique** em todos os
 tipos de instalação, com aviso diário de versão nova.
 Instalador pelo terminal (`scripts/instalar.sh`): descobre o sistema, baixa a versão certa, confere o SHA-256 e instala.
@@ -118,6 +119,7 @@ Está em **TESTE_DO_CRIADOR.md**:
 ## Decisões tomadas
 | Assunto | Decisão | Motivo |
 |---|---|---|
+| **Quando publicar** | Terminou e está 100% funcional (testes e CI verdes) → publicar a versão oficial na hora, sem perguntar (regras em CLAUDE.md) | Regra do criador para todo o projeto |
 | Nome | **Ignis** (nome do repositório; "fogo" em latim) | O briefing permitia criar um. Fica em `ignis-core/src/consts.rs`, `app/src-tauri/tauri.conf.json` e nos nomes de pacote, para trocar fácil |
 | Identificador | `io.github.kaikydev1jpg.Ignis` | Sem hífen nem sublinhado: vale para Tauri, Flatpak e D-Bus |
 | Versão do llama.cpp | **b12271** (commit 3e86ce2c2), fixada em `manifest/motores.json` com SHA-256 de cada arquivo | Último release com todos os pacotes publicados no dia (11/11/2026) |

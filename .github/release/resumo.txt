@@ -1,1 +1,1 @@
-Voz e transcrição na placa (OmniVoice e Whisper) e atualizar com um clique.
+Mais conversa na mesma placa (memória em 8 bits) e barra da memória da conversa por modelo.
