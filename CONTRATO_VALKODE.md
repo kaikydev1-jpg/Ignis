@@ -43,9 +43,20 @@ qualquer `api_key` (é ignorada).
 { "object": "list", "data": [
   { "id": "qwen3-8b", "object": "model", "created": 1794370000, "owned_by": "ignis",
     "ignis": { "nome": "Qwen3 8B", "tamanho": 5027783488, "embeddings": false,
-               "carregado": true, "contexto_max": 40960 } }
+               "carregado": true, "contexto_max": 40960,
+               "contexto_carregado": 16384, "contexto_possivel": 18432,
+               "cache_kv": "q8_0", "atencao_rapida": true,
+               "vram_livre_bytes": 1234567890, "contexto_pedido": 16384 } }
 ] }
 ```
+- Campos de contexto (desde a 0.3.1, todos opcionais; a `api` continua 1):
+  - `contexto_max`: máximo do treino do modelo (não é o que coube na placa);
+  - `contexto_carregado`: o que o llama-server abriu de fato (`n_ctx`); `null` se o modelo não está carregado. **Use este para a janela da conversa.**
+  - `contexto_possivel`: o maior que caberia na memória livre antes de carregar, com o cache em uso;
+  - `cache_kv`: `"f16"` ou `"q8_0"`: o em uso no modelo carregado, ou o que será pedido nos outros;
+  - `atencao_rapida`: atenção rápida (flash attention) ligada, lida do registro do llama-server (`null` se ele não disse);
+  - `vram_livre_bytes`: memória livre depois de carregar (da placa, ou da RAM no processador), medida logo depois;
+  - `contexto_pedido`: o contexto pedido para o modelo (`null` = automático).
 - `id` é o que vai no campo `model`. Modelos do catálogo usam o id do catálogo
   (`qwen3-8b`), importados do Ollama usam `ollama/<nome:tag>`, arquivos usam
   `arquivo/<nome>`.
@@ -135,7 +146,8 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `GET /motor/modelos/ollama` | Modelos GGUF achados na pasta do Ollama |
 | `GET /motor/modelos/computador` | Modelos GGUF que outros programas já baixaram: Ollama, Hugging Face (cache do `huggingface_hub`) e LM Studio (`fonte`, `nome`, `caminho`, `tamanho`). Para usar: `POST /motor/modelos/importar` com `{"caminho"}` (ou `{"referencia"}` no Ollama) |
 | `POST /motor/modelos/importar` `{"referencia":"llama3.2:3b","modo":"usar"\|"copiar"}` ou `{"caminho":"/x/m.gguf"}` | Importa do Ollama (nunca apaga nada lá) ou um arquivo |
-| `POST /motor/modelos/carregar` `{"id":"…"}` | Carrega já (sem esperar o primeiro pedido) |
+| `POST /motor/carregar` (ou `/motor/modelos/carregar`) `{"modelo":"…", "contexto"?:16384, "cache_kv"?:"q8_0"}` | Carrega já. `contexto` e `cache_kv` ficam guardados para o modelo e valem quando ele recarrega (`"contexto": null` ou `0` = automático; `"cache_kv": "padrao"` = o geral). Pedido maior do que cabe não falha: carrega o maior que cabe. Responde `contexto_carregado`, `contexto_max`, `contexto_possivel`, `cache_kv`, `atencao_rapida`, `memoria_cache_bytes` |
+| `GET /motor/modelos/memoria?id=…` | Para uma barra de "memória da conversa": `pontos[]` (cada `contexto` com `f16` e `q8_0`: `total_mb`, `cache_mb`, `situacao` = `folga`/`apertado`/`nao-cabe`), `memoria_total_mb`, `memoria_livre_mb`, `onde` (`placa`/`ram`), `automatico` (por cache), `pedido`, `carregado` |
 | `POST /motor/modelos/descarregar` | Libera a placa |
 | `POST /motor/modelos/padrao` `{"id":"…"}` | Modelo usado quando o pedido não diz qual |
 | `POST /motor/parar` `{"id":"…"}` | Para uma conversa (ou todas) |
@@ -150,7 +162,7 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `POST /motor/audio/preparar` `{"familias":["voz","transcricao"]}` | Baixa os motores (Vulkan e processador) e o modelo de cada família |
 | `POST /motor/audio/descarregar` | Tira a voz e a transcrição da memória |
 | `POST /motor/audio/teste` `{"texto"?, "voz"?}` | Gera uma fala de teste: `{"wav_b64", "segundos", "motor", "modelo"}` |
-| `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes` (aviso de versão nova uma vez por dia, ligado por padrão; o nome antigo `procurar_atualizacoes_sozinho` ainda é aceito), `llama_server_proprio`, `modelo_padrao`, `botoes_janela`: `auto`/`windows`/`gnome`/`kde`/`mac`/`matsu`) |
+| `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes` (aviso de versão nova uma vez por dia, ligado por padrão; o nome antigo `procurar_atualizacoes_sozinho` ainda é aceito), `contexto_automatico` (padrão `true`), `cache_kv` (`"f16"` padrão ou `"q8_0"`), `llama_server_proprio`, `modelo_padrao`, `botoes_janela`: `auto`/`windows`/`gnome`/`kde`/`mac`/`matsu`) |
 | `GET /motor/atualizacoes`, `POST /motor/atualizacoes/procurar`, `POST /motor/atualizacoes/aplicar` `{"item":"app"\|"motor"\|"catalogo"}` | Atualizações (nunca no meio de uma conversa). `"app"` baixa a versão nova do Ignis para o tipo de instalação (`instalacao` em `/motor/estado`), confere o SHA-256, fecha, instala e abre de novo |
 | `GET /motor/hf/buscar?q=qwen3` | Busca qualquer modelo GGUF no Hugging Face (`repo`, `downloads`, `licenca`, `pede_aceite`, `multimodal`) |
 | `GET /motor/hf/repo?repo=dono/nome` | Versões (quantizações) de um repositório, com tamanho, partes, arquivo de visão/áudio (`mmproj`) e uma estimativa de "cabe na placa" |
@@ -159,6 +171,13 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `GET /motor/hf/conta` / `POST /motor/hf/conta` `{"token":"hf_..."}` | Conta da pessoa no Hugging Face (só para modelos que pedem aceite dos termos). O token fica só no computador e só vai ao huggingface.co; `{"token":""}` desconecta |
 | `GET /motor/relatorio` | Diagnóstico completo (detecção, candidatos, teste) |
 | `GET /motor/registro` | Últimas linhas do registro do llama-server |
+
+### Contexto, cache de 8 bits e atenção rápida (desde a 0.3.1)
+- **Contexto automático (padrão):** o maior que cabe na memória livre, entre 8.192 e 32.768 tokens (nunca acima do treino do modelo). Acima de 8.192 o Ignis deixa 1 GB livre para jogos e outros programas; até 8.192, só a folga de sempre. Quanto mais forte a placa, maior o contexto.
+- **Contexto pedido** (`POST /motor/carregar {"contexto"}` ou `contexto_automatico: false` + `contexto_preferido` na configuração): o Ignis tenta esse; se não couber, usa o maior que cabe e informa em `contexto_carregado`.
+- **Cache de 8 bits** (`"cache_kv": "q8_0"`, por modelo ou geral na configuração): `-ctk q8_0 -ctv q8_0` no llama-server. Ocupa 53% do de 16 bits. O llama.cpp liga a atenção rápida junto (o cache V em 8 bits exige). Se o motor recusar, o Ignis sobe com 16 bits no mesmo motor e avisa em `avisos` ("não aceitou o cache de 8 bits"); nesta sessão não tenta de novo nesse motor.
+- **Atenção rápida:** fica no automático do llama.cpp (liga onde funciona, desliga onde a placa não suporta). Se o motor quebrar ao subir com erro de atenção rápida, o Ignis tenta de novo com `-fa off` e avisa. O estado real vem em `atencao_rapida`.
+- **Começo da conversa reaproveitado:** o llama-server reaproveita o começo igual entre pedidos (`timings.cache_n` na resposta mostra quantos tokens vieram do cache). Um pedido por vez (`-np 1`).
 
 ### Como o Ignis escolhe o motor de cada modelo
 1. Motor escolhido à mão vem primeiro; motor que falhou nesta sessão, por último.

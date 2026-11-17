@@ -105,6 +105,39 @@
         <div class="grupo-topo"><h2>Instalados</h2></div>
         <div class="caixa" id="instalados"></div>
       </section>
+      <section class="grupo" id="grupo-memoria" hidden>
+        <div class="grupo-topo">
+          <h2 id="mem-titulo">Memória da conversa</h2>
+          <button class="botao texto" id="mem-fechar">Fechar</button>
+        </div>
+        <div class="caixa mem-painel">
+          <p class="nota mem-explica">Quanto texto o modelo lembra de uma vez. Placas mais fortes aguentam mais: arraste e veja quanto vai usar.</p>
+          <div class="mem-topo">
+            <strong id="mem-valor">—</strong>
+            <span id="mem-situacao" class="etiqueta">—</span>
+          </div>
+          <input type="range" id="mem-barra" min="0" max="1" step="1" value="0" aria-label="Tamanho da memória da conversa">
+          <div class="mem-marcas"><span id="mem-min"></span><span id="mem-max"></span></div>
+          <div class="barra mem-uso" aria-hidden="true">
+            <span class="seg seg-modelo" id="mem-seg-modelo"></span><span class="seg seg-cache" id="mem-seg-cache"></span>
+          </div>
+          <div class="legenda">
+            <span><i class="cor-modelo"></i><span id="mem-leg-modelo">Modelo</span></span>
+            <span><i class="cor-cache"></i><span id="mem-leg-cache">Memória da conversa</span></span>
+            <span><i class="cor-livre"></i><span id="mem-leg-livre">Livre</span></span>
+          </div>
+          <p class="nota" id="mem-detalhe"></p>
+          <label class="ajuste mem-8bits">
+            <div><strong>Guardar em 8 bits</strong><small>Metade do espaço, respostas praticamente iguais.</small></div>
+            <input type="checkbox" class="interruptor" id="mem-cache8">
+          </label>
+          <div class="acoes">
+            <button class="botao primario" id="mem-usar">Usar este tamanho</button>
+            <button class="botao" id="mem-auto">Automático</button>
+          </div>
+          <p class="nota" id="mem-agora"></p>
+        </div>
+      </section>
       <section class="grupo" id="grupo-tarefas" hidden>
         <div class="grupo-topo"><h2>Baixando</h2></div>
         <div class="caixa" id="tarefas"></div>
@@ -245,14 +278,19 @@
             </select>
           </label>
           <label class="ajuste">
-            <div><strong>Tamanho da memória da conversa</strong><small>Quanto texto o modelo lembra de uma vez. O Ignis reduz se não couber.</small></div>
+            <div><strong>Tamanho da memória da conversa</strong><small>Quanto texto o modelo lembra de uma vez. No automático, o Ignis usa o maior que cabe na placa e deixa memória livre para jogos e outros programas.</small></div>
             <select id="cfg-contexto">
+              <option value="auto">Automático (recomendado)</option>
               <option value="2048">2.048 tokens</option>
               <option value="4096">4.096 tokens</option>
               <option value="8192">8.192 tokens</option>
               <option value="16384">16.384 tokens</option>
               <option value="32768">32.768 tokens</option>
             </select>
+          </label>
+          <label class="ajuste">
+            <div><strong>Memória da conversa em 8 bits</strong><small>Guarda a memória da conversa com metade do espaço: cabe quase o dobro de conversa na mesma placa, com respostas praticamente iguais. Se a placa não aceitar, o Ignis volta sozinho para 16 bits.</small></div>
+            <input type="checkbox" class="interruptor" id="cfg-cache8">
           </label>
           <label class="ajuste">
             <div><strong>Porta da API</strong><small>Usada pelos outros programas. Só funciona neste computador.</small></div>

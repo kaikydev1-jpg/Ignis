@@ -110,6 +110,8 @@ pub async fn bench_one_com(
         args_extras: vec![],
         mmproj: None,
         args_proprios: None,
+        cache_kv: crate::budget::CacheKv::F16,
+        atencao_rapida: None,
     };
     let mut result = BenchResult {
         variante: variante.into(),

@@ -201,3 +201,17 @@ A primeira atualização de verdade será da 0.3.0 para a próxima versão. Quan
    - **Fedora Atomic com o RPM em camada:** pede a senha e avisa "Reinicie o computador para usar a versão nova".
 3. Em **Motor → Sobre**, confira o número da versão nova.
    - Se algo falhar, a janela mostra o comando para instalar à mão o arquivo que já foi baixado. Mande a mensagem e a pasta de registros.
+
+## 12. Memória da conversa maior e cache de 8 bits (novo na 0.3.1, pedido do Valkode)
+1. Em **Modelos**, no Qwen3 8B, clique em **Memória da conversa**.
+   - **Esperado:** a barra mostra, para cada tamanho, quantos GB vai usar da placa e se cabe com folga, apertado ou não cabe. Ligue **Guardar em 8 bits** e veja o número cair quase pela metade na parte da memória da conversa.
+2. Arraste até **16.384 tokens**, com **8 bits** ligado, e clique em **Usar este tamanho**.
+   - **Esperado na RX 580 (8 GB):** "Pronto: 16.384 tokens de memória da conversa, 8 bits". Em **Status**, a Memória da conversa mostra "16.384 tokens, 8 bits, atenção rápida".
+   - Sem 8 bits, 16.384 não cabe na RX 580: o Ignis carrega o maior que cabe e diz qual foi.
+3. Pelo terminal, confira o que o Valkode vai ler:
+```bash
+curl -s http://127.0.0.1:11470/v1/models
+```
+   - **Esperado:** no Qwen3 8B, `"contexto_carregado": 16384`, `"cache_kv": "q8_0"`, `"atencao_rapida": true`.
+4. Velocidade nos dois modos: com o modelo em 16 bits e depois em 8 bits, mande a mesma pergunta e anote os tokens/s que aparecem em **Status**. Mande os dois números.
+5. Abra um jogo e volte: com o tamanho **Automático**, o Ignis deixa 1 GB livre acima de 8.192 tokens.

@@ -365,6 +365,16 @@ select { padding-right: 28px; }
 .legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .legenda i.cor-outros { background: var(--mem-outros); }
 .legenda i.cor-modelo { background: var(--brasa); }
+.seg-cache { background: color-mix(in srgb, var(--brasa) 45%, var(--mem-trilho)); }
+.legenda i.cor-cache { background: color-mix(in srgb, var(--brasa) 45%, var(--mem-trilho)); }
+.mem-painel { padding: 4px 16px 14px; }
+.mem-painel .mem-explica { margin: 10px 0 12px; }
+.mem-topo { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
+.mem-topo strong { font-size: 17px; }
+#mem-barra { width: 100%; accent-color: var(--brasa); margin: 4px 0 2px; }
+.mem-marcas { display: flex; justify-content: space-between; color: var(--suave); font-size: 12.5px; margin-bottom: 12px; }
+.mem-uso { height: 14px; }
+.mem-painel .mem-8bits { padding: 12px 0 0; border-top: 0; }
 .legenda i.cor-livre { background: var(--mem-trilho); border: 1px solid var(--linha-forte); }
 
 .fatos { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px 22px; margin: 20px 0 0; padding-top: 18px; border-top: 1px solid var(--linha); }

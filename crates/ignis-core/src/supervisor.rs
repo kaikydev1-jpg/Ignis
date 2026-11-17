@@ -37,6 +37,12 @@ pub struct LaunchSpec {
     /// `{porta}` vira a porta escolhida. Sem isto, os argumentos são os do llama-server.
     #[serde(default)]
     pub args_proprios: Option<Vec<String>>,
+    /// Tipo do cache de contexto (f16 é o padrão do llama.cpp).
+    #[serde(default)]
+    pub cache_kv: crate::budget::CacheKv,
+    /// Atenção rápida (flash attention): None = automático (o llama.cpp liga onde funciona).
+    #[serde(default)]
+    pub atencao_rapida: Option<bool>,
 }
 
 impl LaunchSpec {
@@ -60,6 +66,9 @@ impl LaunchSpec {
             "--no-webui".into(),
             "-np".into(),
             "1".into(),
+            // nível 4: o registro mostra a atenção rápida e o tamanho do cache (umas 20 linhas por pedido)
+            "-lv".into(),
+            "4".into(),
         ];
         if self.embeddings {
             a.push("--embeddings".into());
@@ -67,6 +76,17 @@ impl LaunchSpec {
         if let Some(mm) = &self.mmproj {
             a.push("--mmproj".into());
             a.push(mm.to_string_lossy().into_owned());
+        }
+        if self.cache_kv != crate::budget::CacheKv::F16 {
+            // o cache V em 8 bits exige atenção rápida; no automático o llama.cpp liga sozinho
+            for flag in ["-ctk", "-ctv"] {
+                a.push(flag.into());
+                a.push(self.cache_kv.nome().into());
+            }
+        }
+        if let Some(fa) = self.atencao_rapida {
+            a.push("-fa".into());
+            a.push(if fa { "on" } else { "off" }.into());
         }
         a.extend(self.args_extras.iter().cloned());
         a
@@ -101,9 +121,21 @@ pub struct Server {
     pub spec: LaunchSpec,
     pub iniciado: Instant,
     log: LogBuf,
+    /// Linhas do registro sobre atenção rápida e cache (guardadas mesmo que o registro gire).
+    marcas: LogBuf,
 }
 
 impl Server {
+    /// Atenção rápida ligada? Lido do registro do llama-server (None = não disse).
+    pub fn atencao_rapida(&self) -> Option<bool> {
+        atencao_rapida_do_registro(&self.marcas.lock().unwrap().iter().cloned().collect::<Vec<_>>())
+    }
+
+    /// Memória do cache de contexto (MiB), lida do registro do llama-server.
+    pub fn memoria_cache_mb(&self) -> Option<f64> {
+        memoria_cache_do_registro(&self.marcas.lock().unwrap().iter().cloned().collect::<Vec<_>>())
+    }
+
     pub fn log_tail(&self, n: usize) -> Vec<String> {
         tail(&self.log, n)
     }
@@ -131,6 +163,46 @@ impl Server {
 fn tail(log: &LogBuf, n: usize) -> Vec<String> {
     let l = log.lock().unwrap();
     l.iter().rev().take(n).rev().cloned().collect()
+}
+
+/// O que o llama-server diz sobre a atenção rápida, na ordem em que diz.
+pub fn atencao_rapida_do_registro(linhas: &[String]) -> Option<bool> {
+    let mut r = None;
+    for l in linhas {
+        let l = l.to_lowercase();
+        if !l.contains("flash") {
+            continue;
+        }
+        if l.contains("not supported") || l.contains("set to disabled") || l.contains("disabling flash") || l.contains("forcing off") {
+            r = Some(false);
+        } else if l.contains("flash attention enabled")
+            || l.contains("enabling flash_attn")
+            || (l.contains("flash_attn") && l.contains("= enabled"))
+        {
+            r = Some(true);
+        } else if l.contains("flash_attn") && l.contains("= disabled") {
+            r = Some(false);
+        }
+    }
+    r
+}
+
+/// "llama_kv_cache: size =  448.00 MiB (  4096 cells, …)" → 448.0 (soma se houver mais de uma).
+pub fn memoria_cache_do_registro(linhas: &[String]) -> Option<f64> {
+    let mut total = None;
+    for l in linhas {
+        let Some(i) = l.find("kv_cache: size =") else { continue };
+        let resto = l[i + "kv_cache: size =".len()..].trim_start();
+        if let Some(mib) = resto.split_whitespace().next().and_then(|n| n.parse::<f64>().ok()) {
+            *total.get_or_insert(0.0) += mib;
+        }
+    }
+    total
+}
+
+fn eh_marca(line: &str) -> bool {
+    let l = line.to_lowercase();
+    l.contains("flash") || l.contains("type_k") || l.contains("n_ctx") || l.contains("kv_cache: size")
 }
 
 fn push_log(log: &LogBuf, line: String) {
@@ -272,6 +344,7 @@ async fn start_once(spec: &LaunchSpec, client: &reqwest::Client, timeout: Durati
     let mut child = cmd.spawn().map_err(|e| StartError::Spawn(format!("{} ({e})", spec.exe.display())))?;
     attach_to_job(&child);
     let log: LogBuf = Arc::new(Mutex::new(VecDeque::new()));
+    let marcas: LogBuf = Arc::new(Mutex::new(VecDeque::new()));
     for stream in [
         child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
         child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Unpin + Send>),
@@ -280,10 +353,14 @@ async fn start_once(spec: &LaunchSpec, client: &reqwest::Client, timeout: Durati
     .flatten()
     {
         let log = log.clone();
+        let marcas = marcas.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stream).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 tracing::debug!(target: "llama", "{line}");
+                if eh_marca(&line) {
+                    push_log(&marcas, line.clone());
+                }
                 push_log(&log, line);
             }
         });
@@ -305,7 +382,9 @@ async fn start_once(spec: &LaunchSpec, client: &reqwest::Client, timeout: Durati
         if let Ok(r) = client.get(format!("{base_url}/health")).timeout(Duration::from_secs(2)).send().await {
             if r.status().is_success() {
                 tracing::info!("motor pronto em {:.1}s", started.elapsed().as_secs_f32());
-                return Ok(Server { child, porta, base_url, spec: spec.clone(), iniciado: Instant::now(), log });
+                // as últimas linhas do início podem chegar logo depois do /health
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                return Ok(Server { child, porta, base_url, spec: spec.clone(), iniciado: Instant::now(), log, marcas });
             }
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -358,10 +437,45 @@ mod tests {
             args_extras: vec![],
             mmproj: None,
             args_proprios: None,
+            cache_kv: crate::budget::CacheKv::F16,
+            atencao_rapida: None,
         };
         let a = s.args(5555);
         assert!(a.windows(2).any(|w| w == ["--host", "127.0.0.1"]));
         assert!(a.windows(2).any(|w| w == ["-ngl", "0"]), "processador nunca manda camadas para a placa");
         assert!(!a.contains(&"--embeddings".to_string()));
+        assert!(!a.iter().any(|x| x == "-ctk" || x == "-fa"), "sem pedir, fica o padrão do llama.cpp: {a:?}");
+        let q8 = LaunchSpec { cache_kv: crate::budget::CacheKv::Q8_0, atencao_rapida: Some(false), ..s };
+        let a = q8.args(5555);
+        assert!(a.windows(2).any(|w| w == ["-ctk", "q8_0"]) && a.windows(2).any(|w| w == ["-ctv", "q8_0"]), "{a:?}");
+        assert!(a.windows(2).any(|w| w == ["-fa", "off"]));
+    }
+
+    #[test]
+    fn atencao_rapida_pelo_registro() {
+        let l = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            atencao_rapida_do_registro(&l(&["llama_context: flash_attn            = auto", "sched_reserve: Flash Attention enabled"])),
+            Some(true)
+        );
+        assert_eq!(
+            atencao_rapida_do_registro(&l(&["flash_attn = auto", "sched_reserve: Flash Attention not supported, set to disabled"])),
+            Some(false)
+        );
+        assert_eq!(
+            atencao_rapida_do_registro(&l(&["llama_init_from_model: enabling flash_attn since it is required for quantized V cache"])),
+            Some(true)
+        );
+        assert_eq!(atencao_rapida_do_registro(&l(&["llama_context: flash_attn            = disabled"])), Some(false));
+        assert_eq!(atencao_rapida_do_registro(&l(&["nada sobre isso"])), None);
+        // linhas reais do llama-server b12271 com -lv 4
+        let real = l(&[
+            "0.00.583.108 I llama_context: flash_attn            = auto",
+            "0.00.806.441 I llama_kv_cache: size =  448.00 MiB (  4096 cells,  28 layers,  1/1 seqs), K (f16):  224.00 MiB, V (f16):  224.00 MiB",
+            "0.00.807.409 I resolve_fused_ops: Flash Attention enabled",
+        ]);
+        assert_eq!(atencao_rapida_do_registro(&real), Some(true));
+        assert_eq!(memoria_cache_do_registro(&real), Some(448.0));
+        assert_eq!(memoria_cache_do_registro(&l(&["sem cache"])), None);
     }
 }

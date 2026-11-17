@@ -275,6 +275,8 @@ impl Motor {
                 args_extras: vec![],
                 mmproj: None,
                 args_proprios: Some(args),
+                cache_kv: crate::budget::CacheKv::F16,
+                atencao_rapida: None,
             };
             let t0 = Instant::now();
             match supervisor::start(&spec, &self.local, self.load_timeout).await {

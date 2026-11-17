@@ -17,8 +17,13 @@ pub struct Settings {
     pub descarregar_apos_seg: u64,
     /// Variante de motor escolhida à mão (ex.: "linux-vulkan"). `None` = automático.
     pub motor_forcado: Option<String>,
-    /// Tamanho de contexto desejado (o orçamento pode reduzir).
+    /// Tamanho de contexto escolhido à mão (vale quando `contexto_automatico` está desligado).
     pub contexto_preferido: u32,
+    /// Contexto automático: o maior que cabe com folga, entre 8.192 e 32.768 tokens.
+    pub contexto_automatico: bool,
+    /// Tipo do cache de contexto para todos os modelos: "f16" (padrão) ou "q8_0" (cabe quase o dobro).
+    /// Cada modelo pode ter o seu (pedido em /motor/carregar).
+    pub cache_kv: crate::budget::CacheKv,
     /// Procurar versão nova sozinho, uma vez por dia (só lê a lista pública da versão no GitHub; nada é enviado).
     /// Nome novo de propósito: quem tinha a opção antiga desligada (o padrão antigo) passa a receber o aviso.
     pub procurar_atualizacoes: bool,
@@ -40,6 +45,8 @@ impl Default for Settings {
             descarregar_apos_seg: 10 * 60,
             motor_forcado: None,
             contexto_preferido: 8192,
+            contexto_automatico: true,
+            cache_kv: crate::budget::CacheKv::F16,
             procurar_atualizacoes: true,
             llama_server_proprio: None,
             modelo_padrao: None,
@@ -70,6 +77,9 @@ pub struct SettingsPatch {
     pub descarregar_apos_seg: Option<u64>,
     pub descarregar_apos_min: Option<u64>,
     pub contexto_preferido: Option<u32>,
+    pub contexto_automatico: Option<bool>,
+    /// "f16" ou "q8_0".
+    pub cache_kv: Option<String>,
     pub procurar_atualizacoes: Option<bool>,
     /// Nome antigo (0.1/0.2), ainda aceito pela API.
     pub procurar_atualizacoes_sozinho: Option<bool>,
@@ -96,6 +106,12 @@ impl SettingsPatch {
         }
         if let Some(v) = self.contexto_preferido {
             s.contexto_preferido = v;
+        }
+        if let Some(v) = self.contexto_automatico {
+            s.contexto_automatico = v;
+        }
+        if let Some(c) = self.cache_kv.as_deref().and_then(crate::budget::CacheKv::de_texto) {
+            s.cache_kv = c;
         }
         if let Some(v) = self.procurar_atualizacoes.or(self.procurar_atualizacoes_sozinho) {
             s.procurar_atualizacoes = v;

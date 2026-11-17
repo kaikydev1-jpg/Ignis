@@ -145,6 +145,8 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/motor/modelos/computador", get(computador_listar))
         .route("/motor/modelos/importar", post(importar))
         .route("/motor/modelos/carregar", post(carregar))
+        .route("/motor/carregar", post(carregar))
+        .route("/motor/modelos/memoria", get(memoria_modelo))
         .route("/motor/modelos/descarregar", post(descarregar))
         .route("/motor/modelos/padrao", post(padrao))
         .route("/motor/parar", post(parar))
@@ -180,7 +182,8 @@ async fn root() -> Response {
 }
 
 async fn v1_models(State(m): M) -> Response {
-    let carregado = m.loaded_info().map(|i| i.modelo_id);
+    let info = m.loaded_info();
+    let carregado = info.as_ref().map(|i| i.modelo_id.clone());
     let data: Vec<Value> = m
         .installed_models()
         .into_iter()
@@ -197,6 +200,14 @@ async fn v1_models(State(m): M) -> Response {
                     "embeddings": x.embeddings,
                     "carregado": carregado.as_deref() == Some(x.id.as_str()),
                     "contexto_max": x.info.as_ref().map(|i| i.contexto_treino),
+                    // só do modelo carregado (null nos outros)
+                    "contexto_carregado": info.as_ref().filter(|i| i.modelo_id == x.id).map(|i| i.contexto_carregado),
+                    "contexto_possivel": info.as_ref().filter(|i| i.modelo_id == x.id).and_then(|i| i.contexto_possivel),
+                    "atencao_rapida": info.as_ref().filter(|i| i.modelo_id == x.id).and_then(|i| i.atencao_rapida),
+                    "vram_livre_bytes": info.as_ref().filter(|i| i.modelo_id == x.id).and_then(|i| i.vram_livre_bytes),
+                    // em uso no carregado; nos outros, o que será pedido ao carregar
+                    "cache_kv": info.as_ref().filter(|i| i.modelo_id == x.id).map(|i| i.cache_kv).unwrap_or_else(|| m.pedido_para(&x).cache),
+                    "contexto_pedido": m.pedido_para(&x).contexto,
                 }
             })
         })
@@ -568,6 +579,54 @@ fn recursos_para(m: &Motor) -> Recursos {
     }
 }
 
+/// Para a barra da memória da conversa: quanto cada tamanho usa da placa (ou da RAM), em 16 e
+/// em 8 bits, e se cabe com folga, apertado ou não cabe. `?id=<modelo>`.
+async fn memoria_modelo(State(m): M, q: Q) -> Response {
+    let Some(model) = q.get("id").and_then(|id| m.installed_models().into_iter().find(|x| &x.id == id)) else {
+        return err_response(404, "model_not_found", "Modelo não encontrado.");
+    };
+    let shape = model.shape();
+    let rec = recursos_para(&m);
+    let det = m.detection();
+    let placa = rec.usa_placa && rec.vram_livre_mb.is_some();
+    // a memória do modelo que já está carregado volta a ficar livre ao trocar
+    let ocupado = m.loaded_info().map(|i| if placa { i.plano.memoria_placa_mb } else { i.plano.memoria_ram_mb }).unwrap_or(0);
+    let livre = if placa { rec.vram_livre_mb.unwrap_or(0) } else { rec.ram_livre_mb } + ocupado;
+    let total =
+        if placa { det.as_ref().and_then(|d| d.principal()).and_then(|g| g.vram_total_mb) } else { det.as_ref().map(|d| d.ram_total_mb) };
+    let rec_livre =
+        Recursos { usa_placa: placa, vram_livre_mb: placa.then_some(livre), ram_livre_mb: if placa { rec.ram_livre_mb } else { livre } };
+    let caches = [budget::CacheKv::F16, budget::CacheKv::Q8_0];
+    let pontos: Vec<Value> = budget::pontos_da_barra(shape.contexto_max)
+        .into_iter()
+        .map(|ctx| {
+            let mut p = json!({"contexto": ctx});
+            for c in caches {
+                let (total_mb, cache_mb) = budget::memoria_estimada_mb(&shape, ctx, c);
+                p[c.nome()] = json!({"total_mb": total_mb, "cache_mb": cache_mb, "situacao": budget::situacao(total_mb, livre, placa)});
+            }
+            p
+        })
+        .collect();
+    let mut auto = json!({});
+    for c in caches {
+        auto[c.nome()] = json!(budget::plan_com(&shape, &rec_livre, &budget::PedidoContexto { contexto: None, cache: c }).contexto);
+    }
+    let carregado = m.loaded_info().filter(|i| i.modelo_id == model.id);
+    ok(json!({
+        "modelo": model.id, "nome": model.nome, "embeddings": model.embeddings,
+        "onde": if placa { "placa" } else { "ram" },
+        "memoria_total_mb": total, "memoria_livre_mb": livre,
+        "modelo_mb": shape.tamanho_arquivo.div_ceil(1024 * 1024),
+        "contexto_max": shape.contexto_max,
+        "automatico": auto,
+        "pontos": pontos,
+        "opcoes": m.opcoes_modelo(&model.id),
+        "pedido": m.pedido_para(&model),
+        "carregado": carregado.map(|i| json!({"contexto_carregado": i.contexto_carregado, "cache_kv": i.cache_kv, "atencao_rapida": i.atencao_rapida})),
+    }))
+}
+
 /// Velocidade já medida deste modelo em cada motor, da mais rápida para a mais lenta.
 fn velocidades_do_modelo(m: &Motor, id: &str) -> Vec<Value> {
     let nomes: std::collections::HashMap<String, String> = m.candidates().into_iter().map(|c| (c.variante, c.nome)).collect();
@@ -694,15 +753,54 @@ async fn importar(State(m): M, Json(b): Json<ImportBody>) -> Response {
     }
 }
 
-async fn carregar(State(m): M, Json(b): Json<IdBody>) -> Response {
-    let pedido = b.id.as_deref();
+/// `{"id" (ou "modelo"), "contexto"?, "cache_kv"?}`. O contexto e o cache ficam guardados para o
+/// modelo (valem quando ele recarrega). `"contexto": 0` ou `null` = automático/geral; `"cache_kv":
+/// "padrao"` = o geral. Pedido maior do que cabe não falha: carrega o maior que cabe e informa.
+async fn carregar(State(m): M, Json(b): Json<Value>) -> Response {
+    let pedido = b.get("id").or_else(|| b.get("modelo")).and_then(|x| x.as_str());
     let embeddings = pedido.and_then(|p| m.installed_models().into_iter().find(|x| x.id == p)).map(|x| x.embeddings).unwrap_or(false);
     let id = match m.resolve_model(pedido, embeddings) {
         Ok(id) => id,
         Err(e) => return e.into_response(),
     };
+    let mut opcoes = m.opcoes_modelo(&id);
+    if let Some(c) = b.get("contexto") {
+        opcoes.contexto = match c {
+            Value::Null => None,
+            v => match v.as_u64() {
+                Some(0) => None,
+                Some(n) if n >= budget::CONTEXTO_MINIMO as u64 => Some(n.min(1 << 20) as u32),
+                _ => {
+                    return err_response(
+                        400,
+                        "invalid_request_error",
+                        "\"contexto\" precisa ser um número de tokens (2048 ou mais), 0 ou null.",
+                    )
+                }
+            },
+        };
+    }
+    if let Some(c) = b.get("cache_kv") {
+        opcoes.cache_kv = match c.as_str().map(|s| s.trim().to_ascii_lowercase()) {
+            None if c.is_null() => None,
+            Some(s) if s.is_empty() || s == "padrao" || s == "padrão" || s == "auto" => None,
+            Some(s) => match budget::CacheKv::de_texto(&s) {
+                Some(k) => Some(k),
+                None => return err_response(400, "invalid_request_error", "\"cache_kv\" precisa ser \"f16\" ou \"q8_0\"."),
+            },
+            None => return err_response(400, "invalid_request_error", "\"cache_kv\" precisa ser \"f16\" ou \"q8_0\"."),
+        };
+    }
+    if b.get("contexto").is_some() || b.get("cache_kv").is_some() {
+        m.definir_opcoes_modelo(&id, opcoes);
+    }
     match m.ensure_loaded(&id).await {
-        Ok(i) => ok(json!({"ok": true, "modelo": i.modelo_id, "motor": i.variante, "contexto": i.plano.contexto})),
+        Ok(i) => ok(json!({
+            "ok": true, "modelo": i.modelo_id, "motor": i.variante, "contexto": i.plano.contexto,
+            "contexto_carregado": i.contexto_carregado, "contexto_max": i.contexto_max,
+            "contexto_possivel": i.contexto_possivel, "cache_kv": i.cache_kv, "atencao_rapida": i.atencao_rapida,
+            "memoria_cache_bytes": i.memoria_cache_bytes, "pedido": i.pedido,
+        })),
         Err(e) => e.into_response(),
     }
 }

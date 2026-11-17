@@ -390,6 +390,7 @@ function renderModelos() {
         ${m.carregado ? '<button class="botao" data-acao="descarregar">Descarregar</button>' : `<button class="botao" data-acao="carregar" data-id="${esc(m.id)}" ${m.existe ? "" : "disabled"}>Carregar</button>`}
         ${m.embeddings || !m.existe ? "" : `<button class="botao texto" data-acao="testar-modelo" data-id="${esc(m.id)}" title="Mede todos os motores com este modelo. O mais rápido passa a ser usado para ele.">Testar velocidade</button>`}
         ${m.padrao || m.embeddings ? "" : `<button class="botao texto" data-acao="padrao" data-id="${esc(m.id)}">Usar como padrão</button>`}
+        ${m.embeddings || !m.existe ? "" : `<button class="botao texto" data-acao="memoria" data-id="${esc(m.id)}" title="Escolher quanto texto o modelo lembra e ver quanto usa da placa">Memória da conversa</button>`}
         <button class="botao texto perigo" data-acao="remover" data-id="${esc(m.id)}" data-nome="${esc(m.nome)}" data-origem="${esc(m.origem.tipo)}">Remover</button>
       </div></div>`;
   }).join("") : `<div class="vazio"><strong>Nenhum modelo ainda.</strong>Escolha um abaixo: os marcados em verde rodam bem na sua placa.</div>`);
@@ -518,7 +519,12 @@ async function carregarConfig() {
   const sel = $("cfg-descarregar");
   if (![...sel.options].some((o) => Number(o.value) === min)) sel.add(new Option(`Depois de ${min} min`, String(min)));
   sel.value = String(min);
-  $("cfg-contexto").value = String(c.contexto_preferido);
+  const ctxSel = $("cfg-contexto");
+  if (!c.contexto_automatico && ![...ctxSel.options].some((o) => o.value === String(c.contexto_preferido))) {
+    ctxSel.add(new Option(`${Number(c.contexto_preferido).toLocaleString("pt-BR")} tokens`, String(c.contexto_preferido)));
+  }
+  ctxSel.value = c.contexto_automatico ? "auto" : String(c.contexto_preferido);
+  $("cfg-cache8").checked = c.cache_kv === "q8_0";
   $("cfg-botoes").value = c.botoes_janela || "auto";
   $("cfg-autostart").checked = c.abrir_com_computador;
   $("cfg-att-auto").checked = c.procurar_atualizacoes;
@@ -543,7 +549,11 @@ $("cfg-botoes").addEventListener("change", (e) => acao(null, async () => {
   await salvar({ botoes_janela: e.target.value }, "Botões da janela atualizados.");
   if (window.montarBotoesJanela) await window.montarBotoesJanela(e.target.value);
 }));
-$("cfg-contexto").addEventListener("change", (e) => acao(null, () => salvar({ contexto_preferido: Number(e.target.value) }, "Vale a partir do próximo modelo carregado.")));
+$("cfg-contexto").addEventListener("change", (e) => acao(null, () => salvar(e.target.value === "auto"
+  ? { contexto_automatico: true }
+  : { contexto_automatico: false, contexto_preferido: Number(e.target.value) }, "Vale a partir do próximo carregamento do modelo.")));
+$("cfg-cache8").addEventListener("change", (e) => acao(null, () => salvar({ cache_kv: e.target.checked ? "q8_0" : "f16" },
+  e.target.checked ? "Memória da conversa em 8 bits a partir do próximo carregamento." : "Memória da conversa em 16 bits a partir do próximo carregamento.")));
 $("cfg-porta").addEventListener("change", (e) => acao(null, async () => {
   const p = Number(e.target.value);
   if (!(p >= 1024 && p <= 65535)) throw new Error("Use uma porta entre 1024 e 65535.");
@@ -598,7 +608,7 @@ function renderStatus() {
   pinta($("medidas"), `
     <dl class="medida"><dt>Escrevendo</dt><dd>${v ? tps(v.geracao_tps) : "—"}<small>tokens/s</small></dd></dl>
     <dl class="medida"><dt>Lendo</dt><dd>${v ? tps(v.leitura_tps) : "—"}<small>tokens/s</small></dd></dl>
-    <dl class="medida"><dt>Memória da conversa</dt><dd>${s.modelo ? s.modelo.contexto.toLocaleString("pt-BR") : "—"}<small>tokens</small></dd></dl>
+    <dl class="medida"><dt>Memória da conversa</dt><dd>${s.modelo ? (s.modelo.contexto_carregado || s.modelo.contexto).toLocaleString("pt-BR") : "—"}<small>tokens${s.modelo ? (s.modelo.cache_kv === "q8_0" ? ", 8 bits" : ", 16 bits") + (s.modelo.atencao_rapida ? ", atenção rápida" : "") : ""}</small></dd></dl>
     <dl class="medida"><dt>Conversas agora</dt><dd>${s.requisicoes_ativas}</dd></dl>`);
   if (document.activeElement !== $("endereco")) $("endereco").value = s.api.endereco;
   pinta($("exemplo"), esc(textoExemplo()));
@@ -686,6 +696,7 @@ document.addEventListener("click", async (e) => {
       }
       return acao(b, () => api("POST", "/motor/atualizacoes/aplicar", { item: b.dataset.item }));
     }
+    case "memoria": return acao(b, () => abrirMemoria(id));
     case "voz-apagar": {
       if (!confirm(`Apagar a voz "${b.dataset.nome}"?`)) return;
       return acao(b, async () => { await api("POST", "/motor/audio/vozes/apagar", { nome: b.dataset.nome }); audioPlanoEm = 0; mensagem("Voz apagada.", "info"); });
@@ -710,6 +721,79 @@ document.addEventListener("click", async (e) => {
     case "hf-sair": return acao(b, async () => { renderConta(await api("POST", "/motor/hf/conta", { token: "" })); mensagem("Conta do Hugging Face desconectada.", "info"); });
   }
 });
+
+// ---------- memória da conversa de um modelo (barra, estilo LM Studio) ----------
+let mem = null; // dados de /motor/modelos/memoria
+const gbTexto = (mb) => (mb >= 1024 ? virgula(mb / 1024) + " GB" : Math.round(mb) + " MB");
+const tokensTexto = (n) => Number(n).toLocaleString("pt-BR") + " tokens";
+const SITUACAO = {
+  folga: ["ok", "Cabe com folga"],
+  apertado: ["alerta", "Cabe, mas sobra pouca memória"],
+  "nao-cabe": ["erro", "Não cabe: o Ignis usa o maior que couber"],
+};
+async function abrirMemoria(id) {
+  mem = await api("GET", "/motor/modelos/memoria?id=" + encodeURIComponent(id));
+  const pedido = mem.pedido || {};
+  $("mem-cache8").checked = pedido.cache === "q8_0";
+  const barra = $("mem-barra");
+  barra.max = String(mem.pontos.length - 1);
+  // começa no tamanho pedido (ou no automático)
+  const alvo = pedido.contexto || mem.automatico[pedido.cache || "f16"];
+  let i = mem.pontos.findIndex((p) => p.contexto >= alvo);
+  if (i < 0) i = mem.pontos.length - 1;
+  barra.value = String(i);
+  $("mem-titulo").textContent = "Memória da conversa: " + mem.nome;
+  $("mem-min").textContent = tokensTexto(mem.pontos[0].contexto);
+  $("mem-max").textContent = tokensTexto(mem.pontos[mem.pontos.length - 1].contexto) + " (máximo do modelo)";
+  $("grupo-memoria").hidden = false;
+  renderMemoria();
+  $("grupo-memoria").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function renderMemoria() {
+  if (!mem) return;
+  const cache = $("mem-cache8").checked ? "q8_0" : "f16";
+  const p = mem.pontos[Number($("mem-barra").value)];
+  const e = p[cache];
+  const onde = mem.onde === "placa" ? "da placa" : "da memória RAM";
+  const total = mem.memoria_total_mb || mem.memoria_livre_mb;
+  $("mem-valor").textContent = tokensTexto(p.contexto);
+  const [cor, texto] = SITUACAO[e.situacao];
+  const sit = $("mem-situacao");
+  sit.className = "etiqueta " + cor;
+  sit.textContent = texto;
+  const pct = (mb) => Math.min(100, (mb / total) * 100).toFixed(1) + "%";
+  const calculo = Math.max(0, e.total_mb - mem.modelo_mb - e.cache_mb);
+  $("mem-seg-modelo").style.width = pct(mem.modelo_mb + calculo);
+  $("mem-seg-cache").style.width = pct(e.cache_mb);
+  $("mem-leg-modelo").textContent = "Modelo " + gbTexto(mem.modelo_mb + calculo);
+  $("mem-leg-cache").textContent = "Memória da conversa " + gbTexto(e.cache_mb);
+  $("mem-leg-livre").textContent = "Livre " + gbTexto(Math.max(0, mem.memoria_livre_mb - e.total_mb));
+  $("mem-detalhe").textContent = `Usa cerca de ${gbTexto(e.total_mb)} ${onde}` +
+    (mem.memoria_total_mb ? ` (de ${gbTexto(mem.memoria_total_mb)}; ${gbTexto(mem.memoria_livre_mb)} livres para o Ignis agora).` : ".") +
+    (cache === "f16" && p.q8_0.situacao !== e.situacao ? ` Em 8 bits usaria ${gbTexto(p.q8_0.total_mb)}.` : "");
+  $("mem-auto").textContent = `Automático (${tokensTexto(mem.automatico[cache])} nesta placa)`;
+  const ped = mem.pedido || {};
+  const agora = mem.carregado
+    ? `Carregado agora com ${tokensTexto(mem.carregado.contexto_carregado)}, ${mem.carregado.cache_kv === "q8_0" ? "8" : "16"} bits${mem.carregado.atencao_rapida ? ", atenção rápida ligada" : ""}.`
+    : "";
+  $("mem-agora").textContent = (ped.contexto ? `Escolhido para este modelo: ${tokensTexto(ped.contexto)}.` : "Este modelo usa o tamanho automático.") + " " + agora;
+}
+$("mem-barra").addEventListener("input", renderMemoria);
+$("mem-cache8").addEventListener("change", renderMemoria);
+$("mem-fechar").addEventListener("click", () => { $("grupo-memoria").hidden = true; mem = null; });
+async function aplicarMemoria(btn, contexto) {
+  const cache = $("mem-cache8").checked ? "q8_0" : "f16";
+  await acao(btn, async () => {
+    mensagem("Carregando o modelo com a nova memória da conversa…", "info");
+    const r = await api("POST", "/motor/carregar", { modelo: mem.modelo, contexto, cache_kv: cache });
+    const caiu = cache === "q8_0" && r.cache_kv !== "q8_0";
+    mensagem(`Pronto: ${tokensTexto(r.contexto_carregado)} de memória da conversa, ${r.cache_kv === "q8_0" ? "8" : "16"} bits.` +
+      (contexto && r.contexto_carregado < contexto ? " Era o maior que cabia." : "") + (caiu ? " A placa não aceitou 8 bits." : ""), caiu ? "aviso" : "info");
+    await abrirMemoria(mem.modelo);
+  });
+}
+$("mem-usar").addEventListener("click", (e) => aplicarMemoria(e.target, mem.pontos[Number($("mem-barra").value)].contexto));
+$("mem-auto").addEventListener("click", (e) => aplicarMemoria(e.target, null));
 
 // ---------- versão nova (faixa no topo) ----------
 function renderFaixaAtt() {

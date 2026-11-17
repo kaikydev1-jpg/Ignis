@@ -36,6 +36,14 @@ struct Config {
     log_erro: String,
     /// Arquivo onde gravar quantos tokens já foram enviados (teste do Parar).
     arquivo_contador: Option<PathBuf>,
+    /// Placa que não aceita o cache de contexto em 8 bits (sai com erro).
+    recusa_q8: bool,
+    /// Placa em que a atenção rápida quebra ao subir (sai com erro, a não ser com -fa off).
+    recusa_fa: bool,
+    /// No automático, a atenção rápida liga (true) ou o llama.cpp desliga por falta de suporte.
+    fa_suportada: bool,
+    /// Contexto máximo que o servidor abre de fato (0 = o pedido em -c).
+    n_ctx_max: u64,
 }
 
 impl Default for Config {
@@ -51,6 +59,10 @@ impl Default for Config {
             vram_mb: 8192,
             log_erro: "erro simulado".into(),
             arquivo_contador: None,
+            recusa_q8: false,
+            recusa_fa: false,
+            fa_suportada: true,
+            n_ctx_max: 0,
         }
     }
 }
@@ -62,6 +74,8 @@ struct App {
     embeddings: bool,
     mmproj: bool,
     tokens: AtomicU64,
+    n_ctx: u64,
+    args: Vec<String>,
 }
 
 fn load_config() -> Config {
@@ -114,6 +128,36 @@ async fn main() {
     let alias = arg(&args, &["-a", "--alias"]).unwrap_or_else(|| "modelo".into());
     let embeddings = args.iter().any(|a| a == "--embeddings" || a == "--embedding");
     eprintln!("main: fake llama-server porta {port} modelo {model}");
+    // cache de contexto e atenção rápida, como o llama.cpp b12271 registra
+    let ctx_pedido: u64 = arg(&args, &["-c", "--ctx-size"]).and_then(|c| c.parse().ok()).unwrap_or(4096);
+    let ctv = arg(&args, &["-ctv", "--cache-type-v"]).unwrap_or_else(|| "f16".into());
+    let fa = arg(&args, &["-fa", "--flash-attn"]).unwrap_or_else(|| "auto".into());
+    if cfg.recusa_q8 && ctv != "f16" {
+        eprintln!("llama_init_from_model: V cache type {ctv} is not supported on this device");
+        eprintln!("main: error: failed to create context");
+        std::process::exit(1);
+    }
+    if cfg.recusa_fa && fa != "off" {
+        eprintln!("ggml_vulkan: Error: FLASH_ATTN_EXT failed to compile for this device");
+        std::process::exit(1);
+    }
+    if fa == "off" {
+        eprintln!("llama_context: flash_attn            = disabled");
+    } else if ctv != "f16" {
+        eprintln!("llama_init_from_model: enabling flash_attn since it is required for quantized V cache");
+        eprintln!("llama_context: flash_attn            = enabled");
+    } else if cfg.fa_suportada {
+        eprintln!("llama_context: flash_attn            = auto");
+        eprintln!("sched_reserve: Flash Attention enabled");
+    } else {
+        eprintln!("llama_context: flash_attn            = auto");
+        eprintln!("sched_reserve: Flash Attention not supported, set to disabled");
+    }
+    let n_ctx = if cfg.n_ctx_max > 0 { ctx_pedido.min(cfg.n_ctx_max) } else { ctx_pedido };
+    eprintln!("llama_context: n_ctx         = {n_ctx}");
+    // memória do cache como o b12271 registra (56 KiB por token em 16 bits; 8 bits ≈ 53%)
+    let kv_mib = n_ctx as f64 * 56.0 / 1024.0 * if ctv == "f16" { 1.0 } else { 34.0 / 64.0 };
+    eprintln!("llama_kv_cache: size = {kv_mib:8.2} MiB ({n_ctx:6} cells,  28 layers,  1/1 seqs), K ({ctv}): {:.2} MiB", kv_mib / 2.0);
 
     let app = Arc::new(App {
         pronto_em: Instant::now() + Duration::from_millis(cfg.demora_subir_ms),
@@ -122,6 +166,8 @@ async fn main() {
         embeddings,
         mmproj: mmproj.is_some(),
         tokens: AtomicU64::new(0),
+        n_ctx,
+        args: args.clone(),
     });
     if cfg.modo == "cai_depois" {
         let ms = cfg.demora_subir_ms + cfg.cai_depois_ms;
@@ -135,6 +181,7 @@ async fn main() {
     let router = Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(models))
+        .route("/props", get(props))
         .route("/completion", post(completion))
         .route("/v1/chat/completions", post(chat))
         .route("/v1/completions", post(chat))
@@ -151,6 +198,11 @@ async fn health(State(app): State<Arc<App>>) -> Response {
         return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": {"code": 503, "message": "Loading model"}}))).into_response();
     }
     Json(json!({"status": "ok"})).into_response()
+}
+
+async fn props(State(app): State<Arc<App>>) -> Json<Value> {
+    // "args" só existe no simulado (os testes conferem o que o Ignis mandou)
+    Json(json!({"default_generation_settings": {"n_ctx": app.n_ctx}, "total_slots": 1, "model_alias": app.alias, "args": app.args}))
 }
 
 async fn models(State(app): State<Arc<App>>) -> Json<Value> {

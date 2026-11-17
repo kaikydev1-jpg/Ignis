@@ -102,6 +102,16 @@ pub struct EstadoPersistido {
     pub ultima_verificacao: u64,
     /// Velocidade de cada modelo em cada motor.
     pub medidas: HashMap<String, MedidasModelo>,
+    /// Contexto e cache pedidos para cada modelo (valem também quando ele recarrega).
+    pub opcoes_modelo: HashMap<String, OpcoesModelo>,
+}
+
+/// Contexto e tipo de cache pedidos para um modelo (None = segue a configuração geral).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OpcoesModelo {
+    pub contexto: Option<u32>,
+    pub cache_kv: Option<budget::CacheKv>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -117,6 +127,22 @@ pub struct CarregadoInfo {
     pub desde: u64,
     /// Por que este motor foi escolhido para este modelo.
     pub motivo: String,
+    /// Contexto que o llama-server abriu de fato (n_ctx).
+    pub contexto_carregado: u32,
+    /// Máximo do treino do modelo.
+    pub contexto_max: u32,
+    /// Maior contexto que caberia na memória livre antes de carregar, com o cache em uso.
+    pub contexto_possivel: Option<u32>,
+    /// Tipo do cache em uso (pode ser f16 mesmo pedindo q8_0, se o motor não aceitou).
+    pub cache_kv: budget::CacheKv,
+    /// Atenção rápida ligada (lido do registro do llama-server; None = ele não disse).
+    pub atencao_rapida: Option<bool>,
+    /// Memória livre depois de carregar: da placa, ou da RAM no processador.
+    pub vram_livre_bytes: Option<u64>,
+    /// Memória que o cache de contexto ocupa (lida do registro do llama-server).
+    pub memoria_cache_bytes: Option<u64>,
+    /// O que foi pedido (para saber se precisa recarregar quando o pedido muda).
+    pub pedido: budget::PedidoContexto,
 }
 
 struct Loaded {
@@ -283,6 +309,10 @@ pub struct Motor {
     next_req: AtomicU64,
     tarefas: Mutex<HashMap<String, Tarefa>>,
     session_failed: Mutex<HashSet<String>>,
+    /// Motores em que o cache de 8 bits ou a atenção rápida falharam nesta sessão.
+    q8_falhou: Mutex<HashSet<String>>,
+    fa_falhou: Mutex<HashSet<String>>,
+    avisou_fa: Mutex<HashSet<String>>,
     update_info: RwLock<Option<UpdateCheck>>,
     instalacao: crate::atualizador::Instalacao,
     /// Comando de instalação da versão nova: quem hospeda o Ignis fecha tudo e roda.
@@ -379,6 +409,9 @@ impl Motor {
             next_req: AtomicU64::new(1),
             tarefas: Mutex::new(HashMap::new()),
             session_failed: Mutex::new(HashSet::new()),
+            q8_falhou: Mutex::new(HashSet::new()),
+            fa_falhou: Mutex::new(HashSet::new()),
+            avisou_fa: Mutex::new(HashSet::new()),
             update_info: RwLock::new(None),
             instalacao: opts.instalacao_override.clone().unwrap_or_else(crate::atualizador::detectar),
             saida: watch::channel(None).0,
@@ -819,7 +852,8 @@ impl Motor {
             let trocar_motor = forcado
                 .as_deref()
                 .is_some_and(|f| f != l.info.variante && self.engine_exe(f).is_some() && !self.session_failed.lock().unwrap().contains(f));
-            if l.info.modelo_id == model_id && l.server.exited().is_none() && !trocar_motor {
+            let pedido_mudou = l.info.modelo_id == model_id && l.info.pedido != self.pedido_para_id(model_id);
+            if l.info.modelo_id == model_id && l.server.exited().is_none() && !trocar_motor && !pedido_mudou {
                 self.touch();
                 return Ok(l.info.clone());
             }
@@ -867,7 +901,8 @@ impl Motor {
             *me.ultimo_carregamento.write().unwrap() = Some(r);
         };
         let principal = det.principal().cloned();
-        let contexto = self.settings().contexto_preferido;
+        let pedido = self.pedido_para(&model);
+        let shape = model.shape();
         let mut tentativas: Vec<String> = Vec::new();
         for (i, (cand, exe)) in order.iter().enumerate() {
             let rec = Recursos {
@@ -875,11 +910,18 @@ impl Motor {
                 vram_livre_mb: principal.as_ref().and_then(|g| g.vram_livre_mb.or(g.vram_total_mb)),
                 ram_livre_mb: det.ram_livre_mb,
             };
-            let mut plano = budget::plan(&model.shape(), &rec, contexto);
-            if cand.backend == Backend::Proprio {
-                // motor próprio: não sabemos se usa placa; manda tudo e deixa o motor decidir
-                plano.todas_na_placa = rec.vram_livre_mb.is_some();
-            }
+            // o que já falhou neste motor nesta sessão não é tentado de novo
+            let mut cache = if self.q8_falhou.lock().unwrap().contains(&cand.variante) { budget::CacheKv::F16 } else { pedido.cache };
+            let mut atencao: Option<bool> = self.fa_falhou.lock().unwrap().contains(&cand.variante).then_some(false);
+            let planejar = |cache: budget::CacheKv| {
+                let mut p = budget::plan_com(&shape, &rec, &budget::PedidoContexto { contexto: pedido.contexto, cache });
+                if cand.backend == Backend::Proprio {
+                    // motor próprio: não sabemos se usa placa; manda tudo e deixa o motor decidir
+                    p.todas_na_placa = rec.vram_livre_mb.is_some();
+                }
+                p
+            };
+            let mut plano = planejar(cache);
             let mut reduziu = false;
             loop {
                 self.set_fase(Fase::Carregando, format!("Carregando {} no motor {}…", model.nome, cand.nome));
@@ -895,17 +937,23 @@ impl Motor {
                     args_extras: vec![],
                     mmproj: model.mmproj.clone().filter(|p| p.is_file()),
                     args_proprios: None,
+                    cache_kv: cache,
+                    atencao_rapida: atencao,
                 };
                 let t_tentativa = std::time::Instant::now();
                 let resultado = supervisor::start(&spec, &self.local, self.load_timeout).await;
                 let seg = (t_tentativa.elapsed().as_secs_f64() * 10.0).round() / 10.0;
                 etapas.push(json!({
                     "variante": cand.variante, "motor": cand.nome, "segundos": seg, "ok": resultado.is_ok(),
-                    "camadas_na_placa": plano.ngl_arg(), "contexto": plano.contexto,
+                    "camadas_na_placa": plano.ngl_arg(), "contexto": plano.contexto, "cache_kv": cache,
+                    "atencao_rapida": atencao,
                     "erro": resultado.as_ref().err().map(|e| e.to_string()),
                 }));
                 match resultado {
                     Ok(server) => {
+                        let contexto_carregado = self.ler_contexto_real(&server.base_url).await.unwrap_or(plano.contexto);
+                        // com o cache V em 8 bits o llama.cpp sempre liga a atenção rápida
+                        let atencao_real = server.atencao_rapida().or((cache == budget::CacheKv::Q8_0).then_some(true)).or(atencao);
                         let info = CarregadoInfo {
                             modelo_id: model.id.clone(),
                             modelo_nome: model.nome.clone(),
@@ -917,6 +965,14 @@ impl Motor {
                             embeddings: model.embeddings,
                             desde: now_unix(),
                             motivo: if i == 0 { motivo.texto().to_string() } else { format!("o motor {} não funcionou", order[0].0.nome) },
+                            contexto_carregado,
+                            contexto_max: shape.contexto_max,
+                            contexto_possivel: budget::contexto_possivel(&shape, &rec, cache),
+                            cache_kv: cache,
+                            atencao_rapida: atencao_real,
+                            vram_livre_bytes: None,
+                            memoria_cache_bytes: server.memoria_cache_mb().map(|mb| (mb * 1024.0 * 1024.0) as u64),
+                            pedido,
                         };
                         registrar(self, true, Some(&cand.variante), &etapas);
                         *guard = Some(Loaded { server, info: info.clone() });
@@ -929,6 +985,23 @@ impl Motor {
                         if let Some(a) = &plano.aviso {
                             self.aviso("info", a.clone());
                         }
+                        if pedido.cache == budget::CacheKv::Q8_0 && cache != pedido.cache {
+                            self.aviso(
+                                "aviso",
+                                format!(
+                                    "O motor {} não aceitou o cache de 8 bits; usando 16 bits (contexto de {contexto_carregado} tokens).",
+                                    cand.nome
+                                ),
+                            );
+                        }
+                        if atencao_real == Some(false) && !model.embeddings && self.avisou_fa.lock().unwrap().insert(cand.variante.clone())
+                        {
+                            self.aviso(
+                                "info",
+                                format!("Atenção rápida desligada: o motor {} não tem suporte para ela nesta placa.", cand.nome),
+                            );
+                        }
+                        self.medir_memoria_livre_depois(info.modelo_id.clone(), info.desde, cand.backend.usa_placa());
                         return Ok(info);
                     }
                     Err(e) => {
@@ -950,6 +1023,28 @@ impl Motor {
                             registrar(self, false, None, &etapas);
                             return Err(MotorError::Falhou(motivo));
                         }
+                        // cache de 8 bits recusado: tenta de novo com 16 bits no mesmo motor
+                        if cache == budget::CacheKv::Q8_0 {
+                            self.q8_falhou.lock().unwrap().insert(cand.variante.clone());
+                            cache = budget::CacheKv::F16;
+                            plano = planejar(cache);
+                            if reduziu {
+                                // já tinha faltado memória: mantém a redução
+                                plano.todas_na_placa = false;
+                                plano.camadas_na_placa = (plano.camadas_na_placa / 2).max(1);
+                                plano.contexto = plano.contexto.min(4096);
+                            }
+                            tracing::info!("motor {}: cache de 8 bits falhou; tentando com 16 bits", cand.variante);
+                            continue;
+                        }
+                        // erro de atenção rápida: tenta sem ela
+                        let fala_de_flash = e.log().iter().any(|l| l.to_lowercase().contains("flash"));
+                        if atencao != Some(false) && fala_de_flash {
+                            self.fa_falhou.lock().unwrap().insert(cand.variante.clone());
+                            atencao = Some(false);
+                            self.aviso("aviso", format!("A atenção rápida falhou no motor {}; tentando sem ela.", cand.nome));
+                            continue;
+                        }
                         self.mark_failed(&cand.variante);
                         tentativas.push(format!("{}: {motivo}", cand.nome));
                         if let Some((next, _)) = order.get(i + 1) {
@@ -963,6 +1058,67 @@ impl Motor {
         self.set_fase(Fase::Parado, "");
         registrar(self, false, None, &etapas);
         Err(MotorError::Falhou(format!("Nenhum motor conseguiu abrir o modelo. {}", tentativas.join(" | "))))
+    }
+
+    /// Contexto e cache pedidos para este modelo: o do próprio modelo, senão o geral.
+    pub fn pedido_para(&self, model: &InstalledModel) -> budget::PedidoContexto {
+        let s = self.settings();
+        if model.embeddings {
+            // modelos de busca por significado: contexto curto, como sempre
+            return budget::PedidoContexto { contexto: Some(s.contexto_preferido.min(8192)), cache: budget::CacheKv::F16 };
+        }
+        let o = self.estado.lock().unwrap().opcoes_modelo.get(&model.id).copied().unwrap_or_default();
+        budget::PedidoContexto {
+            contexto: o.contexto.or((!s.contexto_automatico).then_some(s.contexto_preferido)),
+            cache: o.cache_kv.unwrap_or(s.cache_kv),
+        }
+    }
+
+    fn pedido_para_id(&self, model_id: &str) -> budget::PedidoContexto {
+        let m = self.registry.lock().unwrap().get(model_id).cloned();
+        m.map(|m| self.pedido_para(&m)).unwrap_or_default()
+    }
+
+    /// Guarda o contexto e o cache pedidos para um modelo (None nos dois = volta ao geral).
+    pub fn definir_opcoes_modelo(&self, model_id: &str, opcoes: OpcoesModelo) {
+        {
+            let mut e = self.estado.lock().unwrap();
+            if opcoes == OpcoesModelo::default() {
+                e.opcoes_modelo.remove(model_id);
+            } else {
+                e.opcoes_modelo.insert(model_id.to_string(), opcoes);
+            }
+        }
+        self.save_estado();
+    }
+
+    pub fn opcoes_modelo(&self, model_id: &str) -> OpcoesModelo {
+        self.estado.lock().unwrap().opcoes_modelo.get(model_id).copied().unwrap_or_default()
+    }
+
+    /// Contexto que o llama-server abriu de fato (`/props` → `default_generation_settings.n_ctx`).
+    async fn ler_contexto_real(&self, base_url: &str) -> Option<u32> {
+        let r = self.local.get(format!("{base_url}/props")).timeout(Duration::from_secs(3)).send().await.ok()?;
+        let v: Value = r.json().await.ok()?;
+        v.pointer("/default_generation_settings/n_ctx").and_then(|x| x.as_u64()).filter(|n| *n > 0).map(|n| n as u32)
+    }
+
+    /// Mede a memória livre depois de carregar (em segundo plano) e guarda no estado.
+    fn medir_memoria_livre_depois(self: &Arc<Self>, modelo_id: String, desde: u64, placa: bool) {
+        let me = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let det = me.detect_now().await;
+            let mb = if placa { det.principal().and_then(|g| g.vram_livre_mb) } else { Some(det.ram_livre_mb) };
+            let Some(mb) = mb else { return };
+            let bytes = mb * 1024 * 1024;
+            let mut g = me.loaded.lock().await;
+            if let Some(l) = g.as_mut().filter(|l| l.info.modelo_id == modelo_id && l.info.desde == desde) {
+                l.info.vram_livre_bytes = Some(bytes);
+                *me.snapshot.write().unwrap() = Some(l.info.clone());
+                me.bump();
+            }
+        });
     }
 
     /// Descarrega o modelo (libera a placa).
@@ -2121,6 +2277,10 @@ impl Motor {
                 "encaixe": i.plano.encaixe, "embeddings": i.embeddings, "desde": i.desde,
                 "memoria_placa_mb": i.plano.memoria_placa_mb, "memoria_ram_mb": i.plano.memoria_ram_mb,
                 "motivo_motor": i.motivo,
+                "contexto_carregado": i.contexto_carregado, "contexto_max": i.contexto_max,
+                "contexto_possivel": i.contexto_possivel, "cache_kv": i.cache_kv,
+                "atencao_rapida": i.atencao_rapida, "vram_livre_bytes": i.vram_livre_bytes,
+                "memoria_cache_bytes": i.memoria_cache_bytes, "pedido": i.pedido,
             })
         });
         let proximo_motor = self.engine_order().first().map(|(c, _)| json!({"variante": c.variante, "nome": c.nome, "backend": c.backend}));
