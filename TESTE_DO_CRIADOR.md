@@ -215,3 +215,32 @@ curl -s http://127.0.0.1:11470/v1/models
    - **Esperado:** no Qwen3 8B, `"contexto_carregado": 16384`, `"cache_kv": "q8_0"`, `"atencao_rapida": true`.
 4. Velocidade nos dois modos: com o modelo em 16 bits e depois em 8 bits, mande a mesma pergunta e anote os tokens/s que aparecem em **Status**. Mande os dois números.
 5. Abra um jogo e volte: com o tamanho **Automático**, o Ignis deixa 1 GB livre acima de 8.192 tokens.
+
+## 13. Pedidos da Fornalha e da Erethea (novo na 0.4.0)
+O que já foi provado sem placa está no ESTADO.md. Falta provar na placa de verdade:
+1. **Imagem na RX 580 pelo Vulkan.** Em **Voz**, na linha **Imagem**, clique em **Preparar** (≈6,5 GB). Depois:
+```bash
+curl -s http://127.0.0.1:11470/v1/images/generations -H 'content-type: application/json' \
+  -d '{"prompt":"um gato laranja dormindo num sofá azul","size":"1024x1024","seed":42}' -o imagem.json
+python3 -c "import json,base64; open('gato.png','wb').write(base64.b64decode(json.load(open('imagem.json'))['data'][0]['b64_json']))"
+```
+   - **Esperado:** `gato.png` com o gato; em `imagem.json`, `"ignis": {"backend": "vulkan", "segundos": N}`. Anote os segundos. Se vier `"backend": "cpu"`, mande o **Copiar relatório** e a pasta de registros.
+   - Teste também `"size":"512x512"` e veja se a memória de vídeo (Placa) volta depois do tempo de descarregar.
+2. **Voz comercial (Chatterbox).** Na linha **Voz comercial**, clique em **Preparar** (≈860 MB). Depois:
+```bash
+curl -s http://127.0.0.1:11470/v1/audio/speech -H 'content-type: application/json' \
+  -d '{"model":"chatterbox","input":"Olá! Esta é a voz comercial do Ignis.","language":"pt","response_format":"wav"}' -o comercial.wav
+```
+   - **Esperado:** `comercial.wav` falando em português, com sotaque aceitável. Diga se soa natural. Em **Voz**, a linha mostra "Na memória: placa (Vulkan)".
+3. **Reservar a placa** (para o TRELLIS.2):
+```bash
+curl -s http://127.0.0.1:11470/motor/reservar -H 'content-type: application/json' -d '{"mb":6000,"minutos":2}'
+```
+   - **Esperado:** `"suficiente": true` e a memória de vídeo livre perto dos 8 GB (Placa). Um pedido de conversa nesse tempo recebe "A placa está reservada…". Depois de 2 min (ou `curl -X POST http://127.0.0.1:11470/motor/reservar/liberar`), a conversa volta a funcionar.
+4. **Aceleradores:** `curl -s http://127.0.0.1:11470/motor/estado` → em `aceleradores`, na RX 580: `vulkan.existe: true`, `rocm.existe: false` (fora da lista da AMD), `cuda.existe: false`; em `vram`, total e livre da placa.
+5. **Cérebro + embeddings juntos:** baixe o Qwen3 Embedding 0.6B. Converse com o Qwen3 8B e logo peça um embedding:
+```bash
+curl -s http://127.0.0.1:11470/v1/embeddings -H 'content-type: application/json' -d '{"input":"teste"}'
+```
+   - **Esperado:** em `/motor/estado`, `modelos_carregados` com os dois; a próxima conversa não recarrega o 8B (resposta rápida).
+6. **Visão leve:** baixe o **Qwen3-VL 4B** no catálogo (filtro "Vê imagens") e mande uma foto pelo Valkode ou pelo formato `image_url`. **Esperado:** descreve a foto; cabe inteiro na placa.

@@ -29,13 +29,27 @@ de outros projetos, listadas abaixo com suas licenças.
   **CC BY-NC 4.0, uso não comercial**. O Ignis mostra isso antes de baixar.
 - Pesos da transcrição: **Whisper** (`ggerganov/whisper.cpp`, modelos da OpenAI) — **MIT**.
 
+## Voz comercial e geração de imagem (desde a 0.4.0)
+- **codec.cpp** (https://github.com/mybigday/codec.cpp, MIT; inclui ggml e llama.cpp, MIT) e
+  **stable-diffusion.cpp** (https://github.com/leejet/stable-diffusion.cpp, MIT; inclui ggml,
+  libwebp e libwebm, licenças BSD), compilados pelo CI do Ignis a partir de commits fixados e
+  publicados na release `motores-audio-2`. Baixados só quando a pessoa prepara a voz comercial
+  ou a imagem.
+- Pesos da voz comercial: **Chatterbox Multilingual** (Resemble AI, convertido para GGUF em
+  `BricksDisplay/Chatterbox-Multilingual-TTS-GGUF`) — **MIT**, uso comercial permitido. O pacote
+  original em Python aplica a marca d'água "Perth" da Resemble AI no áudio; o codec.cpp não
+  aplica (conferido no código do commit usado).
+- Pesos da imagem: **Z-Image Turbo** (Tongyi-MAI / Alibaba, GGUF em `leejet/Z-Image-Turbo-GGUF`),
+  codificador de texto **Qwen3 4B Instruct 2507** (`unsloth/Qwen3-4B-Instruct-2507-GGUF`) e VAE
+  (`Comfy-Org/z_image_turbo`, do FLUX.1, Apache 2.0) — todos **Apache 2.0**, uso comercial permitido.
+
 ## Modelos (cada um com sua licença)
 O Ignis não leva modelos. Ao baixar, a janela mostra a licença de cada um (com
 link). Catálogo atual (`manifest/catalogo.json`):
 
 | Modelo | Licença |
 |---|---|
-| Qwen3 0.6B, 1.7B, 4B, 8B, 14B; Qwen3 Embedding 0.6B; Qwen2.5 Coder 1.5B e 7B | Apache 2.0 (Alibaba Cloud / Qwen) |
+| Qwen3 0.6B, 1.7B, 4B, 8B, 14B; Qwen3-VL 4B (vê imagens); Qwen3 Embedding 0.6B; Qwen2.5 Coder 1.5B e 7B | Apache 2.0 (Alibaba Cloud / Qwen) |
 | Gemma 3 4B | Termos de uso do Gemma (Google) — https://ai.google.dev/gemma/terms |
 | Phi-4 mini | MIT (Microsoft) |
 | gpt-oss 20B | Apache 2.0 (OpenAI) |

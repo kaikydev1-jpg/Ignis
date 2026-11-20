@@ -633,6 +633,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn texto_do_chatterbox() {
+        assert_eq!(texto_chatterbox("Olá, Mundo!", None), "[pt]ola\u{301}, mundo!");
+        assert_eq!(texto_chatterbox("Ação", Some("Portuguese")), "[pt]ac\u{327}a\u{303}o");
+        assert_eq!(texto_chatterbox("Hello", Some("en-US")), "[en]hello");
+        assert_eq!(texto_chatterbox("Bonjour", Some("francês")), "[fr]bonjour");
+        assert_eq!(codigo_idioma("pt_BR"), "pt");
+        assert_eq!(codigo_idioma("klingon"), "pt", "idioma desconhecido fica no português");
+    }
+
+    #[test]
+    fn perfis_da_voz_comercial_e_da_imagem() {
+        assert_eq!(perfil(Familia::VozComercial, false, Some(8000)), "processador");
+        assert_eq!(perfil(Familia::VozComercial, true, Some(8000)), "placa");
+        assert_eq!(perfil(Familia::VozComercial, true, Some(2000)), "placa-pequena");
+        assert_eq!(perfil(Familia::Imagem, true, Some(8176)), "placa", "RX 580 de 8 GB");
+        assert_eq!(perfil(Familia::Imagem, true, Some(4096)), "placa-pequena");
+        assert_eq!(perfil(Familia::Imagem, false, None), "processador");
+    }
+
+    #[test]
+    fn argumentos_dos_servidores_novos() {
+        let p = Path::new;
+        let v = args_voz_comercial(p("mtl.gguf"), p("codec.gguf"), true);
+        let pos = |a: &[String], f: &str| a.iter().position(|x| x == f).unwrap_or_else(|| panic!("{f} em {a:?}"));
+        assert_eq!(v[pos(&v, "--backbone") + 1], "mtl.gguf");
+        assert_eq!(v[pos(&v, "--model") + 1], "codec.gguf");
+        assert_eq!(v[pos(&v, "--port") + 1], "{porta}");
+        assert_eq!(v[pos(&v, "--host") + 1], "127.0.0.1");
+        assert!(v.contains(&"--gpu".to_string()));
+        assert!(!args_voz_comercial(p("a"), p("b"), false).contains(&"--gpu".to_string()));
+        let i = args_imagem(p("d.gguf"), p("t.gguf"), p("vae.safetensors"), false);
+        assert_eq!(i[pos(&i, "--diffusion-model") + 1], "d.gguf");
+        assert_eq!(i[pos(&i, "--llm") + 1], "t.gguf");
+        assert_eq!(i[pos(&i, "--vae") + 1], "vae.safetensors");
+        assert_eq!(i[pos(&i, "--listen-ip") + 1], "127.0.0.1");
+        assert_eq!(i[pos(&i, "--listen-port") + 1], "{porta}");
+        assert_eq!(i[pos(&i, "-W") + 1], "512", "no processador, 512 por padrão");
+        let g = args_imagem(p("d"), p("t"), p("v"), true);
+        assert_eq!(g[pos(&g, "-W") + 1], "1024");
+        assert_eq!(Familia::Imagem.rota_saude(), "/v1/models", "o sd-server não tem /health");
+    }
+
+    #[test]
     fn manifesto_embutido_e_valido() {
         let m = ManifestoAudio::embutido();
         m.validar().unwrap();

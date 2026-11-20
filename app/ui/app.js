@@ -669,6 +669,11 @@ document.addEventListener("click", async (e) => {
   const id = b.dataset.id;
   switch (a) {
     case "preparar": return acao(b, () => api("POST", "/motor/preparar"));
+    case "audio-preparar": return acao(b, async () => {
+      await api("POST", "/motor/audio/preparar", { familias: [b.dataset.familia] });
+      audioPlanoEm = 0;
+      mensagem(`Baixando: ${NOME_FAMILIA[b.dataset.familia]}. Pode continuar usando o Ignis.`, "info");
+    });
     case "ir-modelos": return irPara("modelos");
     case "detectar": return acao(b, () => api("POST", "/motor/detectar"));
     case "relatorio": return acao(b, async () => copiar(JSON.stringify(await api("GET", "/motor/relatorio"), null, 2), "Relatório copiado."));
@@ -826,25 +831,34 @@ function renderFaixaAtt() {
 // ---------- VOZ E TRANSCRIÇÃO ----------
 let audioPlano = null;
 let audioPlanoEm = 0;
-const NOME_FAMILIA = { voz: "Voz", transcricao: "Transcrição" };
-const DESC_FAMILIA = { voz: "Fala um texto, com a voz padrão ou uma voz clonada", transcricao: "Transforma áudio em texto (e traduz para inglês)" };
+const NOME_FAMILIA = { voz: "Voz", transcricao: "Transcrição", "voz-comercial": "Voz comercial", imagem: "Imagem" };
+const DESC_FAMILIA = {
+  voz: "Fala um texto, com a voz padrão ou uma voz clonada",
+  transcricao: "Transforma áudio em texto (e traduz para inglês)",
+  "voz-comercial": "Fala em 23 idiomas e pode ir para produto pago (modelo \"chatterbox\" na API)",
+  imagem: "Cria imagens a partir de um texto (/v1/images/generations)",
+};
 const ICONE_FAMILIA = {
   voz: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
   transcricao: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h10M4 18h7"/></svg>',
+  imagem: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5.5-5 4 3.5 2.5-2 4 3.5"/></svg>',
 };
+ICONE_FAMILIA["voz-comercial"] = ICONE_FAMILIA.voz;
 function renderVoz() {
   const p = audioPlano;
   if (!p) return;
   const baixando = estado.tarefas.filter((t) => t.id.startsWith("audio:") && t.estado === "andamento");
-  const linhas = ["voz", "transcricao"].map((f) => {
+  const linhas = ["voz", "transcricao", "voz-comercial", "imagem"].filter((f) => p[f]).map((f) => {
     const x = p[f];
+    const opcional = f === "voz-comercial" || f === "imagem";
     const m = x.modelo_em_uso || x.modelo;
     let sit;
     if (x.rodando) sit = `<span class="etiqueta ok">Na memória: ${esc(x.rodando.backend === "cpu" ? "processador" : "placa (" + x.rodando.motor_nome + ")")}</span>`;
     else if (x.preparado) sit = '<span class="etiqueta ok">Pronta</span>';
     else if (baixando.length) sit = '<span class="etiqueta brasa">Baixando…</span>';
+    else if (opcional && m) sit = `<button class="botao" data-acao="audio-preparar" data-familia="${f}">Preparar (${tamanho(x.falta_baixar)})</button>`;
     else sit = `<span class="etiqueta">Falta baixar ${tamanho(x.falta_baixar)}</span>`;
-    const sub = m ? `${esc(m.nome)} · licença ${esc(m.licenca)}` : "Nenhum modelo serve neste computador";
+    const sub = m ? `${esc(m.nome)} · licença ${esc(m.licenca)}${m.uso_comercial ? " · uso comercial permitido" : ""}` : "Nenhum modelo serve neste computador";
     return `<div class="linha"><span class="icone-linha">${ICONE_FAMILIA[f]}</span>
       <div><div class="titulo">${NOME_FAMILIA[f]}</div><div class="sub">${DESC_FAMILIA[f]}</div><div class="sub">${sub}</div></div>
       <div class="lado">${sit}</div></div>`;
@@ -865,7 +879,7 @@ function renderVoz() {
     ? `A voz usa o OmniVoice, com licença ${esc(mv.licenca)}: pode usar à vontade para você, mas <strong>não para vender ou em produto pago</strong>. A transcrição (Whisper) tem licença MIT e pode ser usada em qualquer coisa.`
     : "");
   $("btn-voz-ouvir").disabled = !p.voz.preparado;
-  $("btn-voz-descarregar").hidden = !(p.voz.rodando || p.transcricao.rodando);
+  $("btn-voz-descarregar").hidden = !["voz", "transcricao", "voz-comercial", "imagem"].some((f) => p[f] && p[f].rodando);
   const sel = $("voz-escolha");
   const atual = sel.value;
   const opcoes = ['<option value="">Voz padrão</option>'].concat(p.vozes.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`)).join("");
@@ -875,7 +889,7 @@ function renderVoz() {
       <div class="lado"><button class="botao texto perigo" data-acao="voz-apagar" data-nome="${esc(n)}">Apagar</button></div></div>`).join("")
     : '<div class="vazio"><strong>Nenhuma voz clonada</strong>Sem voz clonada, o Ignis fala com a voz padrão do modelo.</div>');
   const base = `http://127.0.0.1:${estado.porta || 11470}/v1`;
-  pinta($("voz-api"), `<div class="ajuste"><div><strong>${esc(base)}</strong><small>Mesmo formato da OpenAI: <span class="mono">/audio/speech</span> (falar), <span class="mono">/audio/transcriptions</span> e <span class="mono">/audio/translations</span> (transcrever) e <span class="mono">/audio/voices</span> (vozes clonadas). Modelos: <span class="mono">omnivoice</span> e <span class="mono">whisper-1</span>.</small></div>
+  pinta($("voz-api"), `<div class="ajuste"><div><strong>${esc(base)}</strong><small>Mesmo formato da OpenAI: <span class="mono">/audio/speech</span> (falar), <span class="mono">/audio/transcriptions</span> e <span class="mono">/audio/translations</span> (transcrever) e <span class="mono">/audio/voices</span> (vozes clonadas). Modelos: <span class="mono">omnivoice</span>, <span class="mono">chatterbox</span> (voz comercial) e <span class="mono">whisper-1</span>. Imagem: <span class="mono">/images/generations</span>.</small></div>
       <button class="botao" data-acao="copiar-texto" data-texto="${esc(base)}">Copiar</button></div>
     <div class="ajuste"><div><strong>Azúria Voice</strong><small>Escolha o motor “Ignis” nas configurações do Azúria. Ele usa a placa por aqui, sem instalar nada a mais.</small></div></div>`);
 }

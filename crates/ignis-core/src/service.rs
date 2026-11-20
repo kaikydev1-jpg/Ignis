@@ -1018,7 +1018,7 @@ impl Motor {
                 if sl == SLOT_CONVERSA && rec.usa_placa && outro.embeddings && self.ativos_slot[SLOT_EMBEDDINGS].load(Ordering::SeqCst) == 0
                 {
                     let com = budget::plan_com(&shape, &rec, &pedido);
-                    let sem = budget::plan_com(&shape, &Recursos { vram_livre_mb: sem_outro, ..rec.clone() }, &pedido);
+                    let sem = budget::plan_com(&shape, &Recursos { vram_livre_mb: sem_outro, ..rec }, &pedido);
                     if !com.todas_na_placa && sem.todas_na_placa {
                         if let Ok(mut g) = self.loaded[SLOT_EMBEDDINGS].try_lock() {
                             if let Some(mut l) = g.take() {

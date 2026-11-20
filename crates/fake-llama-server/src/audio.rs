@@ -157,8 +157,8 @@ async fn transcrever(body: Bytes) -> Response {
 }
 
 /// `tts-server` do codec.cpp (Chatterbox Multilingual): `--backbone` + `--model` (o codec),
-/// `/health`, e `response_format` obrigatório. Devolve o texto recebido no cabeçalho
-/// `x-fake-input` para os testes conferirem a transformação.
+/// `/health`, e `response_format` obrigatório. Depois do áudio vem `FAKE-PEDIDO` e o JSON
+/// recebido, para os testes conferirem o que o Ignis mandou.
 pub async fn voz_comercial(args: Vec<String>, demora_ms: u64) {
     if arquivo_existe(&args, &["--backbone"]).is_none() || arquivo_existe(&args, &["--model"]).is_none() {
         eprintln!("tts-server: failed to load backbone or codec");
@@ -180,37 +180,15 @@ async fn falar_comercial(Json(b): Json<Value>) -> Response {
     if texto.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": {"message": "missing input"}}))).into_response();
     }
-    let fmt = b.get("response_format").and_then(|x| x.as_str());
     let amostras = 2400 * texto.chars().count();
-    let (tipo, corpo) = match fmt {
+    let (tipo, mut corpo) = match b.get("response_format").and_then(|x| x.as_str()) {
         Some("wav") => ("audio/wav", wav(amostras)),
         Some("pcm") => ("audio/pcm", vec![0u8; amostras * 2]),
         _ => return (StatusCode::BAD_REQUEST, Json(json!({"error": {"message": "unsupported response_format"}}))).into_response(),
     };
-    let eco = serde_json::to_string(&b).unwrap_or_default();
-    Response::builder()
-        .header("content-type", tipo)
-        .header("x-fake-input", base64_simples(texto.as_bytes()))
-        .header("x-fake-corpo", base64_simples(eco.as_bytes()))
-        .body(Body::from(corpo))
-        .unwrap()
-}
-
-/// Base64 sem dependência (só para os cabeçalhos de teste).
-fn base64_simples(b: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut s = String::new();
-    for c in b.chunks(3) {
-        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
-        for i in 0..4 {
-            if i <= c.len() {
-                s.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
-            } else {
-                s.push('=');
-            }
-        }
-    }
-    s
+    corpo.extend_from_slice(b"FAKE-PEDIDO");
+    corpo.extend_from_slice(serde_json::to_string(&b).unwrap_or_default().as_bytes());
+    Response::builder().header("content-type", tipo).body(Body::from(corpo)).unwrap()
 }
 
 /// `sd-server` do stable-diffusion.cpp: sem `/health` (o Ignis espera pelo `/v1/models`),
@@ -246,8 +224,8 @@ async fn gerar_imagem(Json(b): Json<Value>) -> Response {
         return (StatusCode::BAD_REQUEST, Json(json!({"error": "prompt required"}))).into_response();
     }
     let n = b.get("n").and_then(|x| x.as_u64()).unwrap_or(1).max(1);
-    // PNG de 1x1 (cabeçalho basta para os testes)
-    let png = base64_simples(b"\x89PNG\r\n\x1a\nfake");
+    // "PNG" falso: o Ignis só repassa o base64
+    let png = "iVBORw0KGgpmYWtl";
     let data: Vec<Value> = (0..n).map(|_| json!({"b64_json": png})).collect();
     Json(json!({"created": 1, "data": data, "output_format": b.get("output_format").cloned().unwrap_or(json!("png")), "fake_pedido": b}))
         .into_response()
