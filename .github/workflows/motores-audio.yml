@@ -130,6 +130,9 @@ jobs:
           s = s.replace('LIBRARY_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}")', 'LIBRARY_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}"\n    RUNTIME_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}"\n    ARCHIVE_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}")', 1)
           s = s.replace(antes, 'elseif(WIN32)\n    target_link_options(ttsbackbone PRIVATE\n        "LINKER:--whole-archive" "$<TARGET_FILE:llama>" "$<TARGET_FILE:llama-common>" "LINKER:--no-whole-archive" "LINKER:--export-all-symbols")\n' + antes, 1)
           open(p, 'w', encoding='utf-8').write(s)
+          # o httplib do tts-server usa os sockets do Windows
+          with open('codec/CMakeLists.txt', 'a', encoding='utf-8') as f:
+              f.write('\nif(WIN32 AND TARGET tts-server)\n    target_link_libraries(tts-server PRIVATE ws2_32)\nendif()\n')
           EOF
           grep -n -A3 "elseif(WIN32)" codec/cmake/ttsbackbone/CMakeLists.txt
 
