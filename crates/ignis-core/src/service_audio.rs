@@ -233,6 +233,9 @@ impl Motor {
         if self.is_paused() {
             return Err(MotorError::Pausado);
         }
+        if let Some(r) = self.reserva_ativa() {
+            return Err(super::reservada_erro(&r));
+        }
         let mut slot = self.audio_slot(f).lock().await;
         if let Some(r) = slot.as_mut() {
             if r.server.exited().is_none() {

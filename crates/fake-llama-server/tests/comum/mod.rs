@@ -239,6 +239,8 @@ pub fn catalogo_com(itens: &[(&str, &str, &str, &str, u64, bool)]) -> Catalog {
                 uso: "Teste".into(),
                 arquitetura: Arquitetura { camadas: 28, cabecas_kv: 8, dim_k: 64, dim_v: 64, embd: 1024, contexto_max: 4096 },
                 modelo_de_teste: *teste,
+                uso_comercial: Some("sim".into()),
+                mmproj: None,
                 // nunca baixa de verdade nos testes
                 url: Some("http://127.0.0.1:9/nao-existe".into()),
             })

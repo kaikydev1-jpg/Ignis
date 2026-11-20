@@ -95,6 +95,8 @@ fn catalogo(url: &str, dados: &[u8], sha: Option<String>) -> Catalog {
             uso: "Teste".into(),
             arquitetura: Arquitetura { camadas: 28, cabecas_kv: 8, dim_k: 64, dim_v: 64, embd: 1024, contexto_max: 4096 },
             modelo_de_teste: true,
+            uso_comercial: Some("sim".into()),
+            mmproj: None,
             url: Some(url.into()),
         }],
     }
@@ -324,4 +326,34 @@ async fn preparar_usa_modelo_pequeno_que_ja_esta_no_computador() {
     assert_eq!(im.origem, ignis_core::models::Origem::NoComputador { fonte: "LM Studio".into() });
     assert!(m.tarefas().iter().all(|t| !t.id.starts_with("modelo:")), "não baixou modelo: {:?}", m.tarefas());
     assert!(gguf.is_file());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn modelo_com_visao_baixa_o_mmproj_junto() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dados = gguf_grande(tmp.path());
+    let (url, _srv) = subir_servidor(dados.clone()).await;
+    let mut cat = catalogo(&url, &dados, None);
+    cat.modelos[0].mmproj = Some(ignis_core::catalog::ArquivoExtra {
+        arquivo: "teste-1b-mmproj.gguf".into(),
+        tamanho: dados.len() as u64,
+        sha256: hex::encode(Sha256::digest(&dados)),
+        url: Some(url.clone()),
+    });
+    cat.validate().unwrap();
+    let amb = ambiente(Opcoes { catalog: Some(cat), ..Default::default() });
+    let m = &amb.motor;
+    let tid = m.start_model_download("teste-1b").unwrap();
+    let t = m.tarefas().into_iter().find(|t| t.id == tid).unwrap();
+    assert_eq!(t.total, Some(2 * dados.len() as u64), "o progresso conta o arquivo de visão");
+    esperar("concluir", Duration::from_secs(30), || estado_tarefa(m, &tid).as_deref() == Some("concluida")).await;
+    let im = m.installed_models().into_iter().next().unwrap();
+    let mmproj = im.mmproj.clone().expect("mmproj registrado");
+    assert_eq!(mmproj, amb.paths.models_dir().join("teste-1b-mmproj.gguf"));
+    assert_eq!(std::fs::read(&mmproj).unwrap(), dados);
+    let (_, lista) = ignis_core::api::call(m.clone(), "GET", "/motor/modelos", None).await;
+    assert_eq!(lista["instalados"][0]["visao"], json!(true));
+    assert_eq!(lista["instalados"][0]["uso_comercial"], json!("sim"));
+    m.remove_model("teste-1b").await.unwrap();
+    assert!(!mmproj.exists(), "o arquivo de visão sai junto");
 }

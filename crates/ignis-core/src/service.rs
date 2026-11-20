@@ -186,6 +186,8 @@ pub enum MotorError {
     Invalido(String),
     #[error("{0}")]
     AudioNaoPreparado(String),
+    #[error("{0}")]
+    Reservada(String),
 }
 
 impl MotorError {
@@ -194,7 +196,11 @@ impl MotorError {
             MotorError::ModeloNaoEncontrado(_) => 404,
             MotorError::Invalido(_) => 400,
             MotorError::Ocupado(_) => 409,
-            MotorError::Pausado | MotorError::SemMotor | MotorError::SemModelo | MotorError::AudioNaoPreparado(_) => 503,
+            MotorError::Pausado
+            | MotorError::SemMotor
+            | MotorError::SemModelo
+            | MotorError::AudioNaoPreparado(_)
+            | MotorError::Reservada(_) => 503,
             MotorError::ArquivoSumiu(_) | MotorError::Falhou(_) => 500,
         }
     }
@@ -209,6 +215,7 @@ impl MotorError {
             MotorError::Ocupado(_) => "ocupado",
             MotorError::Invalido(_) => "invalid_request_error",
             MotorError::AudioNaoPreparado(_) => "audio_nao_preparado",
+            MotorError::Reservada(_) => "placa_reservada",
         }
     }
 }
@@ -295,8 +302,15 @@ pub struct Motor {
     audio_uso: Mutex<HashMap<crate::audio::Familia, (std::time::Instant, usize)>>,
     estado: Mutex<EstadoPersistido>,
     registry: Mutex<Registry>,
-    loaded: tokio::sync::Mutex<Option<Loaded>>,
-    snapshot: RwLock<Option<CarregadoInfo>>,
+    /// Dois lugares: [conversa, embeddings] (o cérebro e a busca por significado juntos, quando cabe).
+    loaded: [tokio::sync::Mutex<Option<Loaded>>; 2],
+    snapshot: [RwLock<Option<CarregadoInfo>>; 2],
+    /// Um carregamento por vez (os dois lugares leem a memória livre da placa).
+    carga: tokio::sync::Mutex<()>,
+    /// Conversas usando cada lugar agora.
+    ativos_slot: [AtomicUsize; 2],
+    /// Placa reservada para outro programa (pedido da Fornalha).
+    reserva: RwLock<Option<Reserva>>,
     fase: RwLock<(Fase, String)>,
     paused: AtomicBool,
     avisos: Mutex<VecDeque<Aviso>>,
@@ -336,15 +350,17 @@ pub struct RequestGuard {
     motor: Arc<Motor>,
     pub id: u64,
     pub cancel: CancellationToken,
-    ativo: bool,
+    ativo: Option<usize>,
 }
 
 impl RequestGuard {
-    /// Marca que a conversa começou a usar o motor carregado.
-    pub fn activate(&mut self) {
-        if !self.ativo {
-            self.ativo = true;
+    /// Marca que a conversa começou a usar o modelo carregado (de conversa ou de embeddings).
+    pub fn activate(&mut self, embeddings: bool) {
+        if self.ativo.is_none() {
+            let s = slot(embeddings);
+            self.ativo = Some(s);
             self.motor.ativos.fetch_add(1, Ordering::SeqCst);
+            self.motor.ativos_slot[s].fetch_add(1, Ordering::SeqCst);
             self.motor.touch();
         }
     }
@@ -352,14 +368,40 @@ impl RequestGuard {
 
 impl Drop for RequestGuard {
     fn drop(&mut self) {
-        if self.ativo {
+        if let Some(s) = self.ativo {
             self.motor.ativos.fetch_sub(1, Ordering::SeqCst);
+            self.motor.ativos_slot[s].fetch_sub(1, Ordering::SeqCst);
         }
         self.motor.requests.lock().unwrap().remove(&self.id);
         self.motor.touch();
         self.motor.bump();
     }
 }
+
+/// Lugar de conversa e lugar de embeddings.
+pub const SLOT_CONVERSA: usize = 0;
+pub const SLOT_EMBEDDINGS: usize = 1;
+
+pub fn slot(embeddings: bool) -> usize {
+    if embeddings {
+        SLOT_EMBEDDINGS
+    } else {
+        SLOT_CONVERSA
+    }
+}
+
+/// Placa reservada para outro programa: o Ignis descarrega tudo e não carrega nada até acabar.
+#[derive(Debug, Clone, Serialize)]
+pub struct Reserva {
+    /// Memória de vídeo que o outro programa disse que vai usar (MB), se disse.
+    pub mb: Option<u64>,
+    pub desde: u64,
+    /// Fim da reserva (Unix, segundos).
+    pub ate: u64,
+}
+
+/// Maior reserva aceita (minutos).
+pub const RESERVA_MAX_MIN: u64 = 240;
 
 fn is_model_specific(motivo: &str) -> bool {
     motivo.contains("arquivo do modelo") || motivo.contains("não reconhece")
@@ -396,8 +438,11 @@ impl Motor {
             audio_uso: Mutex::new(HashMap::new()),
             estado: Mutex::new(estado),
             registry: Mutex::new(registry),
-            loaded: tokio::sync::Mutex::new(None),
-            snapshot: RwLock::new(None),
+            loaded: [tokio::sync::Mutex::new(None), tokio::sync::Mutex::new(None)],
+            snapshot: [RwLock::new(None), RwLock::new(None)],
+            carga: tokio::sync::Mutex::new(()),
+            ativos_slot: [AtomicUsize::new(0), AtomicUsize::new(0)],
+            reserva: RwLock::new(None),
             fase: RwLock::new((Fase::Parado, String::new())),
             paused: AtomicBool::new(false),
             avisos: Mutex::new(VecDeque::new()),
@@ -495,8 +540,31 @@ impl Motor {
         self.catalog.read().unwrap().clone()
     }
 
+    /// O modelo de conversa carregado (ou, sem ele, o de embeddings).
     pub fn loaded_info(&self) -> Option<CarregadoInfo> {
-        self.snapshot.read().unwrap().clone()
+        self.loaded_info_de(false).or_else(|| self.loaded_info_de(true))
+    }
+
+    /// O modelo carregado no lugar de conversa (`false`) ou de embeddings (`true`).
+    pub fn loaded_info_de(&self, embeddings: bool) -> Option<CarregadoInfo> {
+        self.snapshot[slot(embeddings)].read().unwrap().clone()
+    }
+
+    /// Todos os modelos carregados agora (até dois: conversa e embeddings).
+    pub fn carregados(&self) -> Vec<CarregadoInfo> {
+        self.snapshot.iter().filter_map(|s| s.read().unwrap().clone()).collect()
+    }
+
+    pub(crate) fn carregados_json(&self) -> Value {
+        json!(self
+            .carregados()
+            .iter()
+            .map(|i| json!({
+                "id": i.modelo_id, "nome": i.modelo_nome, "embeddings": i.embeddings, "motor": i.variante,
+                "memoria_placa_mb": i.plano.memoria_placa_mb, "memoria_ram_mb": i.plano.memoria_ram_mb,
+                "contexto_carregado": i.contexto_carregado, "desde": i.desde,
+            }))
+            .collect::<Vec<_>>())
     }
 
     pub fn is_paused(&self) -> bool {
@@ -592,45 +660,54 @@ impl Motor {
     async fn watch_once(self: &Arc<Self>) {
         // 0) voz e transcrição: queda e descarregar quando parado
         self.vigiar_audio().await;
-        // 1) queda do motor
-        let mut crashed: Option<(CarregadoInfo, Vec<String>, Option<i32>)> = None;
-        if let Ok(mut g) = self.loaded.try_lock() {
-            if let Some(l) = g.as_mut() {
-                if let Some(status) = l.server.exited() {
-                    crashed = Some((l.info.clone(), l.server.log_tail(80), status.code()));
-                    *g = None;
+        // 1) queda do motor (em cada lugar: conversa e embeddings)
+        for sl in [SLOT_CONVERSA, SLOT_EMBEDDINGS] {
+            let mut crashed: Option<(CarregadoInfo, Vec<String>, Option<i32>)> = None;
+            if let Ok(mut g) = self.loaded[sl].try_lock() {
+                if let Some(l) = g.as_mut() {
+                    if let Some(status) = l.server.exited() {
+                        crashed = Some((l.info.clone(), l.server.log_tail(80), status.code()));
+                        *g = None;
+                    }
                 }
             }
-        }
-        if let Some((info, log, code)) = crashed {
-            *self.snapshot.write().unwrap() = None;
-            self.set_fase(Fase::Parado, "");
-            let motivo = supervisor::classify_failure(&log, code);
-            self.mark_failed(&info.variante);
-            let proximo = self.engine_order().into_iter().map(|(c, _)| c).find(|c| c.variante != info.variante);
-            match &proximo {
-                Some(p) => self.aviso("aviso", format!("O motor {} parou de repente ({motivo}) Passei para {}.", info.motor_nome, p.nome)),
-                None => self.aviso("erro", format!("O motor {} parou de repente ({motivo})", info.motor_nome)),
-            }
-            if proximo.is_some() && !self.is_paused() {
-                let me = self.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = me.ensure_loaded(&info.modelo_id).await {
-                        me.aviso("erro", format!("Não consegui recarregar o modelo: {e}"));
-                    }
-                });
+            if let Some((info, log, code)) = crashed {
+                *self.snapshot[sl].write().unwrap() = None;
+                if self.carregados().is_empty() {
+                    self.set_fase(Fase::Parado, "");
+                }
+                let motivo = supervisor::classify_failure(&log, code);
+                self.mark_failed(&info.variante);
+                let proximo = self.engine_order().into_iter().map(|(c, _)| c).find(|c| c.variante != info.variante);
+                match &proximo {
+                    Some(p) => self.aviso("aviso", format!("O motor {} parou de repente ({motivo}) Passei para {}.", info.motor_nome, p.nome)),
+                    None => self.aviso("erro", format!("O motor {} parou de repente ({motivo})", info.motor_nome)),
+                }
+                if proximo.is_some() && !self.is_paused() && self.reserva_ativa().is_none() {
+                    let me = self.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = me.ensure_loaded(&info.modelo_id).await {
+                            me.aviso("erro", format!("Não consegui recarregar o modelo: {e}"));
+                        }
+                    });
+                }
             }
         }
         // 2) descarregar depois de um tempo parado
         let limite = self.settings().descarregar_apos_seg;
-        if limite > 0 && self.ativos() == 0 && self.snapshot.read().unwrap().is_some() {
-            let parado_ms = now_millis().saturating_sub(self.last_activity.load(Ordering::SeqCst));
-            if parado_ms >= limite * 1000 {
-                if let Ok(mut g) = self.loaded.try_lock() {
+        let parado_ms = now_millis().saturating_sub(self.last_activity.load(Ordering::SeqCst));
+        if limite > 0 && parado_ms >= limite * 1000 {
+            for sl in [SLOT_CONVERSA, SLOT_EMBEDDINGS] {
+                if self.ativos_slot[sl].load(Ordering::SeqCst) > 0 || self.snapshot[sl].read().unwrap().is_none() {
+                    continue;
+                }
+                if let Ok(mut g) = self.loaded[sl].try_lock() {
                     if let Some(mut l) = g.take() {
                         l.server.stop().await;
-                        *self.snapshot.write().unwrap() = None;
-                        self.set_fase(Fase::Parado, "");
+                        *self.snapshot[sl].write().unwrap() = None;
+                        if self.carregados().is_empty() {
+                            self.set_fase(Fase::Parado, "");
+                        }
                         let min = limite / 60;
                         let quanto = if min >= 1 { format!("{min} min") } else { format!("{limite} s") };
                         self.aviso(
@@ -641,6 +718,8 @@ impl Motor {
                 }
             }
         }
+        // 2b) reserva da placa que acabou
+        self.reserva_ativa();
         // 3) procura versão nova uma vez por dia (a pessoa pode desligar)
         if self.settings().procurar_atualizacoes {
             let ultima = self.estado.lock().unwrap().ultima_verificacao;
@@ -834,6 +913,9 @@ impl Motor {
         if self.is_paused() {
             return Err(MotorError::Pausado);
         }
+        if let Some(r) = self.reserva_ativa() {
+            return Err(reservada_erro(&r));
+        }
         // durante o teste de velocidade a placa está ocupada: espera terminar
         let t0 = std::time::Instant::now();
         while self.bench_running.load(Ordering::SeqCst) {
@@ -842,9 +924,15 @@ impl Motor {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        let mut guard = self.loaded.lock().await;
+        let model = self.registry.lock().unwrap().get(model_id).cloned().ok_or_else(|| MotorError::ModeloNaoEncontrado(model_id.into()))?;
+        // conversa e embeddings ficam em lugares separados: um não tira o outro da placa
+        let sl = slot(model.embeddings);
+        let mut guard = self.loaded[sl].lock().await;
         if self.is_paused() {
             return Err(MotorError::Pausado);
+        }
+        if let Some(r) = self.reserva_ativa() {
+            return Err(reservada_erro(&r));
         }
         if let Some(l) = guard.as_mut() {
             // motor escolhido à mão diferente do que está rodando: troca no próximo pedido
@@ -857,9 +945,9 @@ impl Motor {
                 self.touch();
                 return Ok(l.info.clone());
             }
-            // outro modelo (ou outro motor): espera as conversas em andamento terminarem
+            // outro modelo (ou outro motor) neste lugar: espera as conversas dele terminarem
             let t0 = std::time::Instant::now();
-            while self.ativos() > 0 {
+            while self.ativos_slot[sl].load(Ordering::SeqCst) > 0 {
                 if t0.elapsed() > Duration::from_secs(120) {
                     return Err(MotorError::Ocupado("Outro modelo está respondendo agora. Tente de novo em instantes.".into()));
                 }
@@ -868,11 +956,15 @@ impl Motor {
         }
         if let Some(mut l) = guard.take() {
             l.server.stop().await;
-            *self.snapshot.write().unwrap() = None;
+            *self.snapshot[sl].write().unwrap() = None;
         }
-        let model = self.registry.lock().unwrap().get(model_id).cloned().ok_or_else(|| MotorError::ModeloNaoEncontrado(model_id.into()))?;
         if !model.existe() {
             return Err(MotorError::ArquivoSumiu(model.nome));
+        }
+        // um carregamento por vez: o outro lugar pode estar lendo a memória livre agora
+        let _carga = self.carga.lock().await;
+        if let Some(r) = self.reserva_ativa() {
+            return Err(reservada_erro(&r));
         }
         let inicio = std::time::Instant::now();
         let det = self.detect_now().await;
@@ -905,11 +997,38 @@ impl Motor {
         let shape = model.shape();
         let mut tentativas: Vec<String> = Vec::new();
         for (i, (cand, exe)) in order.iter().enumerate() {
-            let rec = Recursos {
+            let mut rec = Recursos {
                 usa_placa: cand.backend.usa_placa() && principal.is_some(),
                 vram_livre_mb: principal.as_ref().and_then(|g| g.vram_livre_mb.or(g.vram_total_mb)),
                 ram_livre_mb: det.ram_livre_mb,
             };
+            // o outro lugar (conversa ou embeddings) já ocupa parte da placa
+            let outro_lugar = self.snapshot[1 - sl].read().unwrap().clone();
+            if let Some(outro) = outro_lugar {
+                let total = principal.as_ref().and_then(|g| g.vram_total_mb);
+                if let (Some(livre), Some(total)) = (rec.vram_livre_mb, total) {
+                    if outro.plano.memoria_placa_mb > 0 {
+                        rec.vram_livre_mb = Some(livre.min(total.saturating_sub(outro.plano.memoria_placa_mb)));
+                    }
+                }
+                let sem_outro = rec.vram_livre_mb.map(|l| l + outro.plano.memoria_placa_mb);
+                // o modelo de conversa caberia inteiro na placa sem o de embeddings, e com ele não:
+                // tira o de embeddings (se estiver parado); ele volta no próximo pedido de embeddings
+                if sl == SLOT_CONVERSA && rec.usa_placa && outro.embeddings && self.ativos_slot[SLOT_EMBEDDINGS].load(Ordering::SeqCst) == 0 {
+                    let com = budget::plan_com(&shape, &rec, &pedido);
+                    let sem = budget::plan_com(&shape, &Recursos { vram_livre_mb: sem_outro, ..rec.clone() }, &pedido);
+                    if !com.todas_na_placa && sem.todas_na_placa {
+                        if let Ok(mut g) = self.loaded[SLOT_EMBEDDINGS].try_lock() {
+                            if let Some(mut l) = g.take() {
+                                l.server.stop().await;
+                                *self.snapshot[SLOT_EMBEDDINGS].write().unwrap() = None;
+                                rec.vram_livre_mb = sem_outro;
+                                tracing::info!("embeddings {} descarregado para {} caber inteiro na placa", l.info.modelo_id, model.id);
+                            }
+                        }
+                    }
+                }
+            }
             // o que já falhou neste motor nesta sessão não é tentado de novo
             let mut cache = if self.q8_falhou.lock().unwrap().contains(&cand.variante) { budget::CacheKv::F16 } else { pedido.cache };
             let mut atencao: Option<bool> = self.fa_falhou.lock().unwrap().contains(&cand.variante).then_some(false);
@@ -976,7 +1095,7 @@ impl Motor {
                         };
                         registrar(self, true, Some(&cand.variante), &etapas);
                         *guard = Some(Loaded { server, info: info.clone() });
-                        *self.snapshot.write().unwrap() = Some(info.clone());
+                        *self.snapshot[sl].write().unwrap() = Some(info.clone());
                         self.touch();
                         self.set_fase(Fase::Pronto, format!("{} pronto no motor {}", model.nome, cand.nome));
                         if i > 0 {
@@ -1001,7 +1120,7 @@ impl Motor {
                                 format!("Atenção rápida desligada: o motor {} não tem suporte para ela nesta placa.", cand.nome),
                             );
                         }
-                        self.medir_memoria_livre_depois(info.modelo_id.clone(), info.desde, cand.backend.usa_placa());
+                        self.medir_memoria_livre_depois(sl, info.modelo_id.clone(), info.desde, cand.backend.usa_placa());
                         return Ok(info);
                     }
                     Err(e) => {
@@ -1104,7 +1223,7 @@ impl Motor {
     }
 
     /// Mede a memória livre depois de carregar (em segundo plano) e guarda no estado.
-    fn medir_memoria_livre_depois(self: &Arc<Self>, modelo_id: String, desde: u64, placa: bool) {
+    fn medir_memoria_livre_depois(self: &Arc<Self>, sl: usize, modelo_id: String, desde: u64, placa: bool) {
         let me = self.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1112,10 +1231,10 @@ impl Motor {
             let mb = if placa { det.principal().and_then(|g| g.vram_livre_mb) } else { Some(det.ram_livre_mb) };
             let Some(mb) = mb else { return };
             let bytes = mb * 1024 * 1024;
-            let mut g = me.loaded.lock().await;
+            let mut g = me.loaded[sl].lock().await;
             if let Some(l) = g.as_mut().filter(|l| l.info.modelo_id == modelo_id && l.info.desde == desde) {
                 l.info.vram_livre_bytes = Some(bytes);
-                *me.snapshot.write().unwrap() = Some(l.info.clone());
+                *me.snapshot[sl].write().unwrap() = Some(l.info.clone());
                 me.bump();
             }
         });
@@ -1123,7 +1242,20 @@ impl Motor {
 
     /// Descarrega o modelo (libera a placa).
     pub async fn unload(&self) -> bool {
-        let mut g = self.loaded.lock().await;
+        let mut had = false;
+        for sl in [SLOT_CONVERSA, SLOT_EMBEDDINGS] {
+            had |= self.unload_slot(sl).await;
+        }
+        if !matches!(self.fase.read().unwrap().0, Fase::Testando | Fase::Preparando) {
+            self.set_fase(Fase::Parado, "");
+        }
+        self.bump();
+        had
+    }
+
+    /// Descarrega um dos lugares (conversa ou embeddings).
+    async fn unload_slot(&self, sl: usize) -> bool {
+        let mut g = self.loaded[sl].lock().await;
         let had = if let Some(mut l) = g.take() {
             l.server.stop().await;
             true
@@ -1131,12 +1263,93 @@ impl Motor {
             false
         };
         drop(g);
-        *self.snapshot.write().unwrap() = None;
-        if !matches!(self.fase.read().unwrap().0, Fase::Testando | Fase::Preparando) {
+        *self.snapshot[sl].write().unwrap() = None;
+        had
+    }
+
+    /// Descarrega um modelo específico, se estiver carregado.
+    pub async fn unload_model(&self, id: &str) -> bool {
+        let mut had = false;
+        for sl in [SLOT_CONVERSA, SLOT_EMBEDDINGS] {
+            if self.snapshot[sl].read().unwrap().as_ref().is_some_and(|i| i.modelo_id == id) {
+                had |= self.unload_slot(sl).await;
+            }
+        }
+        if self.carregados().is_empty() && !matches!(self.fase.read().unwrap().0, Fase::Testando | Fase::Preparando) {
             self.set_fase(Fase::Parado, "");
         }
         self.bump();
         had
+    }
+
+    // ---------- reserva da placa (pedido da Fornalha) ----------
+
+    /// A reserva em vigor, se houver. Quando o tempo acaba, ela some (e avisa).
+    pub fn reserva_ativa(&self) -> Option<Reserva> {
+        let r = self.reserva.read().unwrap().clone()?;
+        if now_unix() < r.ate {
+            return Some(r);
+        }
+        let acabou = self.reserva.write().unwrap().take().is_some();
+        if acabou {
+            self.aviso("info", "A reserva da placa acabou. O Ignis volta a carregar modelos quando alguém pedir.");
+            self.bump();
+        }
+        None
+    }
+
+    pub(crate) fn reserva_json(&self) -> Value {
+        match self.reserva_ativa() {
+            Some(r) => json!({"ativa": true, "mb": r.mb, "desde": r.desde, "ate": r.ate, "restante_seg": r.ate.saturating_sub(now_unix())}),
+            None => json!({"ativa": false}),
+        }
+    }
+
+    /// Reserva a placa por `minutos` (1 a 240): para as conversas em andamento, descarrega
+    /// todos os modelos (conversa, embeddings, voz, transcrição, imagem) e recusa carregar
+    /// qualquer coisa até a reserva acabar ou ser liberada. Pedir de novo troca o prazo.
+    pub async fn reservar(&self, mb: Option<u64>, minutos: u64) -> Result<Value, MotorError> {
+        if minutos == 0 || minutos > RESERVA_MAX_MIN {
+            return Err(MotorError::Invalido(format!("\"minutos\" precisa ser de 1 a {RESERVA_MAX_MIN} (ou use /motor/reservar/liberar).")));
+        }
+        let agora = now_unix();
+        let desde = self.reserva_ativa().map(|r| r.desde).unwrap_or(agora);
+        *self.reserva.write().unwrap() = Some(Reserva { mb, desde, ate: agora + minutos * 60 });
+        self.stop_requests(None);
+        let modelos = self.carregados().len();
+        self.unload().await;
+        let audio = self.descarregar_audio(None).await;
+        // o processo do motor some na hora, mas o driver pode levar um instante para devolver a memória
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let det = self.detect_now().await;
+        let g = det.principal();
+        let livre = g.and_then(|g| g.vram_livre_mb);
+        let total = g.and_then(|g| g.vram_total_mb);
+        let base = livre.or(total);
+        let suficiente = match (mb, base) {
+            (Some(mb), Some(l)) => Some(l >= mb),
+            _ => None,
+        };
+        self.aviso("info", format!("Placa reservada por {minutos} min para outro programa: modelos descarregados."));
+        if suficiente == Some(false) {
+            self.aviso("aviso", format!("A reserva pediu {} MB, mas a placa tem {} MB livres.", mb.unwrap_or(0), base.unwrap_or(0)));
+        }
+        self.bump();
+        Ok(json!({
+            "ok": true, "reserva": self.reserva_json(),
+            "descarregados": modelos + audio,
+            "vram_total_mb": total, "vram_livre_mb": livre, "suficiente": suficiente,
+        }))
+    }
+
+    /// Termina a reserva antes do prazo.
+    pub fn liberar_reserva(&self) -> bool {
+        let tinha = self.reserva.write().unwrap().take().is_some();
+        if tinha {
+            self.aviso("info", "Reserva da placa liberada. O Ignis volta a carregar modelos quando alguém pedir.");
+            self.bump();
+        }
+        tinha
     }
 
     pub async fn pause(&self) {
@@ -1163,7 +1376,7 @@ impl Motor {
                 .or_else(|| reg.modelos.iter().find(|m| m.id.eq_ignore_ascii_case(p)))
                 .ok_or_else(|| MotorError::ModeloNaoEncontrado(p.into()))?,
             None => {
-                let carregado = self.loaded_info().filter(|i| i.embeddings == embeddings).and_then(|i| reg.get(&i.modelo_id));
+                let carregado = self.loaded_info_de(embeddings).and_then(|i| reg.get(&i.modelo_id));
                 let padrao = self.settings().modelo_padrao.and_then(|id| reg.get(&id).filter(|m| m.embeddings == embeddings));
                 carregado.or(padrao).or_else(|| reg.modelos.iter().find(|m| m.embeddings == embeddings && m.existe())).ok_or(
                     if embeddings {
@@ -1191,7 +1404,7 @@ impl Motor {
         let cancel = CancellationToken::new();
         self.requests.lock().unwrap().insert(id, cancel.clone());
         self.touch();
-        RequestGuard { motor: self.clone(), id, cancel, ativo: false }
+        RequestGuard { motor: self.clone(), id, cancel, ativo: None }
     }
 
     /// Para uma conversa (ou todas). Devolve quantas foram paradas.
@@ -1218,7 +1431,7 @@ impl Motor {
             geracao_tps: geracao.map(|v| (v * 10.0).round() / 10.0),
             quando: now_unix(),
         });
-        if let (Some(g), Some(n), Some(info), Some(det)) = (geracao, gerados, self.loaded_info(), self.detection()) {
+        if let (Some(g), Some(n), Some(info), Some(det)) = (geracao, gerados, self.loaded_info_de(false), self.detection()) {
             if n >= MIN_TOKENS_MEDIDA && g > 0.0 && !info.embeddings {
                 self.anotar_medida(&info.modelo_id, &det.fingerprint(), &info.variante, g, None);
             }
@@ -1249,7 +1462,8 @@ impl Motor {
 
     /// Últimas linhas do registro do llama-server em uso.
     pub fn server_log(&self, n: usize) -> Vec<String> {
-        match self.loaded.try_lock() {
+        let sl = if self.snapshot[SLOT_CONVERSA].read().unwrap().is_some() { SLOT_CONVERSA } else { SLOT_EMBEDDINGS };
+        match self.loaded[sl].try_lock() {
             Ok(g) => g.as_ref().map(|l| l.server.log_tail(n)).unwrap_or_default(),
             Err(_) => vec!["(o motor está carregando um modelo agora)".into()],
         }
@@ -1356,6 +1570,10 @@ impl Motor {
     /// Tenta um link físico na pasta do Ignis (sem gastar espaço e sem depender
     /// do outro programa); se não der (outro disco, Flatpak), lê no lugar.
     fn reaproveitar_do_computador(&self, m: &crate::catalog::CatalogModel) -> Option<String> {
+        if m.mmproj.is_some() {
+            // modelo com visão: o arquivo de visão vem junto no download normal
+            return None;
+        }
         let p = self.pastas_locais();
         let local = crate::locais::achar_por_sha256(&m.sha256, &p.ollama, p.hugging_face.as_deref())?;
         if local.tamanho != m.tamanho {
@@ -1429,7 +1647,7 @@ impl Motor {
             return Ok(id);
         }
         let tid = format!("modelo:{}", m.id);
-        let cancel = self.task_begin(&tid, "modelo", &m.nome, Some(m.tamanho))?;
+        let cancel = self.task_begin(&tid, "modelo", &m.nome, Some(m.tamanho_total()))?;
         let me = self.clone();
         let tid2 = tid.clone();
         tokio::spawn(async move {
@@ -1456,10 +1674,22 @@ impl Motor {
         cancel: &CancellationToken,
     ) -> Result<(), DownloadError> {
         let dest = self.paths.models_dir().join(&m.arquivo);
-        let cb = |p: Progress| self.task_progress(tid, p);
+        let total = m.tamanho_total();
+        let cb = |p: Progress| self.task_progress(tid, Progress { baixado: p.baixado, total: Some(total) });
         let token = self.hf_token();
         download::download_file(&self.http, &m.download_url(), &dest, Some(&m.sha256), Some(m.tamanho), cancel, &cb, token.as_deref())
             .await?;
+        // arquivo de visão (mmproj), no mesmo repositório e revisão
+        let mmproj = match (&m.mmproj, m.mmproj_url()) {
+            (Some(x), Some(url)) => {
+                let destino = self.paths.models_dir().join(&x.arquivo);
+                let base = m.tamanho;
+                let cb2 = |p: Progress| self.task_progress(tid, Progress { baixado: base + p.baixado, total: Some(total) });
+                download::download_file(&self.http, &url, &destino, Some(&x.sha256), Some(x.tamanho), cancel, &cb2, token.as_deref()).await?;
+                Some(destino)
+            }
+            _ => None,
+        };
         let mut im = InstalledModel::from_file(
             m.id.clone(),
             Some(m.nome.clone()),
@@ -1470,6 +1700,7 @@ impl Motor {
         .map_err(|e| DownloadError::Io(std::io::Error::other(e.to_string())))?;
         im.licenca = Some(m.licenca.clone());
         im.embeddings = im.embeddings || m.embeddings();
+        im.mmproj = mmproj;
         self.registry.lock().unwrap().add(im)?;
         self.bump();
         Ok(())
@@ -1477,9 +1708,7 @@ impl Motor {
 
     /// Remove um modelo (ou um download incompleto do catálogo).
     pub async fn remove_model(&self, id: &str) -> Result<String, MotorError> {
-        if self.loaded_info().map(|i| i.modelo_id == id).unwrap_or(false) {
-            self.unload().await;
-        }
+        self.unload_model(id).await;
         let r = self.registry.lock().unwrap().remove(id, &self.paths.models_dir()).map_err(|e| MotorError::Falhou(e.to_string()))?;
         let msg = match r {
             Some(RemoveOutcome::Apagado) => "Modelo apagado do disco.".to_string(),
@@ -2310,6 +2539,12 @@ impl Motor {
                 "ordem": bench.as_ref().map(|b| b.ordem.clone()).unwrap_or_default(),
                 "modelo_nome": bench.as_ref().and_then(|b| b.modelo_nome.clone()),
             },
+            "aceleradores": self.aceleradores_json(),
+            "vram": det.as_ref().and_then(|d| d.principal()).map(|g| json!({
+                "placa": g.nome, "total_mb": g.vram_total_mb, "livre_mb": g.vram_livre_mb,
+            })),
+            "reserva": self.reserva_json(),
+            "modelos_carregados": self.carregados_json(),
             "precisa_preparar": self.needs_preparation(),
             "audio": self.audio_status_json(),
             "tarefas": self.tarefas(),
@@ -2319,6 +2554,62 @@ impl Motor {
             "requisicoes_ativas": self.ativos(),
             "detectado": det.is_some(),
         })
+    }
+
+    /// Uso comercial de um modelo instalado: do catálogo (escolhido a dedo) ou pela licença
+    /// que veio do Hugging Face ou do próprio arquivo.
+    pub fn uso_comercial_de(&self, m: &InstalledModel) -> crate::licenca::UsoComercial {
+        if let Origem::Catalogo { id } = &m.origem {
+            if let Some(c) = self.catalog().get(id) {
+                return crate::licenca::do_catalogo(c);
+            }
+        }
+        // modelo do catálogo achado no computador (mesmo SHA-256)
+        if let Some(sha) = &m.sha256 {
+            if let Some(c) = self.catalog().modelos.iter().find(|c| c.sha256.eq_ignore_ascii_case(sha)) {
+                return crate::licenca::do_catalogo(c);
+            }
+        }
+        crate::licenca::classificar(m.licenca.as_deref())
+    }
+
+    /// Aceleradores desta máquina (pedido da Fornalha): para cada um, se a placa existe para ele
+    /// (`existe`), se o Ignis consegue usá-lo agora (`disponivel`), se o motor já está baixado e,
+    /// se não der, o motivo e a dica.
+    pub fn aceleradores_json(&self) -> Value {
+        let det = self.detection();
+        let cands = self.candidates();
+        let tem = |v: gpu::Vendor| det.as_ref().is_some_and(|d| d.placas.iter().any(|g| g.fabricante == v));
+        let mut out = serde_json::Map::new();
+        for (chave, backend, existe) in [
+            ("cuda", Backend::Cuda, tem(gpu::Vendor::Nvidia)),
+            ("rocm", Backend::Rocm, tem(gpu::Vendor::Amd)),
+            ("vulkan", Backend::Vulkan, det.as_ref().is_some_and(|d| d.principal().is_some())),
+            ("processador", Backend::Cpu, true),
+        ] {
+            // o primeiro disponível (CUDA pode ter mais de uma versão); senão o primeiro listado
+            let c = cands.iter().filter(|c| c.backend == backend).max_by_key(|c| c.disponivel);
+            out.insert(
+                chave.into(),
+                json!({
+                    "existe": existe || c.is_some_and(|c| c.disponivel),
+                    "disponivel": c.is_some_and(|c| c.disponivel),
+                    "motor_instalado": c.is_some_and(|c| self.engine_exe(&c.variante).is_some()),
+                    "variante": c.map(|c| c.variante.clone()),
+                    "motivo": c.map(|c| c.motivo.clone()),
+                    "dica": c.and_then(|c| c.dica.clone()),
+                }),
+            );
+        }
+        let em_uso = self.loaded_info().map(|i| match i.backend {
+            Backend::Cuda => "cuda",
+            Backend::Rocm => "rocm",
+            Backend::Vulkan => "vulkan",
+            Backend::Proprio => "proprio",
+            Backend::Cpu => "processador",
+        });
+        out.insert("em_uso".into(), json!(em_uso));
+        Value::Object(out)
     }
 
     /// Encerra tudo (ao sair do aplicativo).
@@ -2331,4 +2622,12 @@ impl Motor {
         self.unload().await;
         self.descarregar_audio(None).await;
     }
+}
+
+fn reservada_erro(r: &Reserva) -> MotorError {
+    let resta = r.ate.saturating_sub(now_unix());
+    let min = resta.div_ceil(60);
+    MotorError::Reservada(format!(
+        "A placa está reservada para outro programa por mais {min} min. Libere com POST /motor/reservar/liberar ou espere acabar."
+    ))
 }

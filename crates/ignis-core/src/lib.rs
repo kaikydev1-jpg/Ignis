@@ -20,6 +20,7 @@ pub mod gguf;
 pub mod gpu;
 pub mod hub;
 pub mod janela;
+pub mod licenca;
 pub mod locais;
 pub mod models;
 pub mod ollama;

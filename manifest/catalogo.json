@@ -14,6 +14,7 @@
       "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF",
+      "uso_comercial": "sim",
       "uso": "Bem pequeno e rápido. Bom para respostas curtas, resumos simples e para testar o motor. Roda em quase qualquer computador.",
       "arquitetura": {
         "camadas": 28,
@@ -38,6 +39,7 @@
       "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF",
+      "uso_comercial": "sim",
       "uso": "Pequeno, mas já conversa bem. Bom para placas com pouca memória (2 a 4 GB).",
       "arquitetura": {
         "camadas": 28,
@@ -61,6 +63,7 @@
       "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF",
+      "uso_comercial": "sim",
       "uso": "Bom equilíbrio entre qualidade e velocidade. Indicado para placas de 4 a 6 GB.",
       "arquitetura": {
         "camadas": 36,
@@ -84,6 +87,7 @@
       "sha256": "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF",
+      "uso_comercial": "sim",
       "uso": "Conversa e raciocínio de boa qualidade. Indicado para placas de 8 GB (RX 580 8 GB, RX 6600, RX 7600).",
       "arquitetura": {
         "camadas": 36,
@@ -107,6 +111,7 @@
       "sha256": "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/Qwen/Qwen3-14B-GGUF",
+      "uso_comercial": "sim",
       "uso": "Respostas mais caprichadas. Precisa de placa com 12 a 16 GB (ex.: RX 9060 XT 16 GB).",
       "arquitetura": {
         "camadas": 40,
@@ -130,6 +135,7 @@
       "sha256": "882e8d2db44dc554fb0ea5077cb7e4bc49e7342a1f0da57901c0802ea21a0863",
       "licenca": "Termos de uso do Gemma (Google)",
       "licenca_url": "https://ai.google.dev/gemma/terms",
+      "uso_comercial": "condicional",
       "uso": "Alternativa do Google ao Qwen3 4B, boa em português e em textos longos.",
       "arquitetura": {
         "camadas": 34,
@@ -153,6 +159,7 @@
       "sha256": "88c00229914083cd112853aab84ed51b87bdf6b9ce42f532d8c85c7c63b1730a",
       "licenca": "MIT",
       "licenca_url": "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF",
+      "uso_comercial": "sim",
       "uso": "Modelo pequeno da Microsoft, bom em lógica e matemática.",
       "arquitetura": {
         "camadas": 32,
@@ -176,6 +183,7 @@
       "sha256": "29871c94d15727a6e243f79a37113d4ae625a6215b5e800bf41a23af2da32832",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/ggml-org/Qwen2.5-Coder-1.5B-Q8_0-GGUF",
+      "uso_comercial": "sim",
       "uso": "Feito para completar código enquanto você digita (preenchimento no meio, FIM). Leve e rápido.",
       "arquitetura": {
         "camadas": 28,
@@ -199,6 +207,7 @@
       "sha256": "509287f78cb4d4cf6b3843734733b914b2c158e43e22a7f4bf5e963800894d3c",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "uso_comercial": "sim",
       "uso": "Ajuda a escrever, explicar e corrigir código. Indicado para placas de 8 GB.",
       "arquitetura": {
         "camadas": 28,
@@ -222,6 +231,7 @@
       "sha256": "27cd6c432c7672cb812a92f611cf3ba7bbc35928262bb1e1253ff4ee6ae35901",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF",
+      "uso_comercial": "sim",
       "uso": "Modelo aberto da OpenAI, forte em raciocínio. Precisa de placa com 16 GB.",
       "arquitetura": {
         "camadas": 24,
@@ -245,6 +255,7 @@
       "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
       "licenca": "Apache 2.0",
       "licenca_url": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
+      "uso_comercial": "sim",
       "uso": "Transforma textos em vetores (embeddings) para busca por significado. Não conversa.",
       "arquitetura": {
         "camadas": 28,
