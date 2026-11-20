@@ -295,8 +295,8 @@ pub struct Motor {
     pastas_locais: Option<PastasLocais>,
     audio_man: crate::audio::ManifestoAudio,
     audio_store: crate::audio::AudioStore,
-    audio_voz: tokio::sync::Mutex<Option<audio_svc::AudioRodando>>,
-    audio_transcricao: tokio::sync::Mutex<Option<audio_svc::AudioRodando>>,
+    /// Um servidor por família (voz, transcrição, voz comercial, imagem).
+    audio_slots: [tokio::sync::Mutex<Option<audio_svc::AudioRodando>>; 4],
     audio_info: RwLock<HashMap<crate::audio::Familia, AudioInfo>>,
     audio_falhas: Mutex<HashSet<String>>,
     audio_uso: Mutex<HashMap<crate::audio::Familia, (std::time::Instant, usize)>>,
@@ -431,8 +431,7 @@ impl Motor {
             pastas_locais: opts.pastas_locais,
             audio_man: opts.audio_manifest_override.unwrap_or_else(crate::audio::ManifestoAudio::embutido),
             audio_store: crate::audio::AudioStore::new(paths.data_dir.join("audio"), paths.downloads_dir(), opts.extras_motor.clone()),
-            audio_voz: tokio::sync::Mutex::new(None),
-            audio_transcricao: tokio::sync::Mutex::new(None),
+            audio_slots: std::array::from_fn(|_| tokio::sync::Mutex::new(None)),
             audio_info: RwLock::new(HashMap::new()),
             audio_falhas: Mutex::new(HashSet::new()),
             audio_uso: Mutex::new(HashMap::new()),
@@ -680,7 +679,9 @@ impl Motor {
                 self.mark_failed(&info.variante);
                 let proximo = self.engine_order().into_iter().map(|(c, _)| c).find(|c| c.variante != info.variante);
                 match &proximo {
-                    Some(p) => self.aviso("aviso", format!("O motor {} parou de repente ({motivo}) Passei para {}.", info.motor_nome, p.nome)),
+                    Some(p) => {
+                        self.aviso("aviso", format!("O motor {} parou de repente ({motivo}) Passei para {}.", info.motor_nome, p.nome))
+                    }
                     None => self.aviso("erro", format!("O motor {} parou de repente ({motivo})", info.motor_nome)),
                 }
                 if proximo.is_some() && !self.is_paused() && self.reserva_ativa().is_none() {
@@ -1014,7 +1015,8 @@ impl Motor {
                 let sem_outro = rec.vram_livre_mb.map(|l| l + outro.plano.memoria_placa_mb);
                 // o modelo de conversa caberia inteiro na placa sem o de embeddings, e com ele não:
                 // tira o de embeddings (se estiver parado); ele volta no próximo pedido de embeddings
-                if sl == SLOT_CONVERSA && rec.usa_placa && outro.embeddings && self.ativos_slot[SLOT_EMBEDDINGS].load(Ordering::SeqCst) == 0 {
+                if sl == SLOT_CONVERSA && rec.usa_placa && outro.embeddings && self.ativos_slot[SLOT_EMBEDDINGS].load(Ordering::SeqCst) == 0
+                {
                     let com = budget::plan_com(&shape, &rec, &pedido);
                     let sem = budget::plan_com(&shape, &Recursos { vram_livre_mb: sem_outro, ..rec.clone() }, &pedido);
                     if !com.todas_na_placa && sem.todas_na_placa {
@@ -1058,6 +1060,7 @@ impl Motor {
                     args_proprios: None,
                     cache_kv: cache,
                     atencao_rapida: atencao,
+                    rota_saude: None,
                 };
                 let t_tentativa = std::time::Instant::now();
                 let resultado = supervisor::start(&spec, &self.local, self.load_timeout).await;
@@ -1310,7 +1313,9 @@ impl Motor {
     /// qualquer coisa até a reserva acabar ou ser liberada. Pedir de novo troca o prazo.
     pub async fn reservar(&self, mb: Option<u64>, minutos: u64) -> Result<Value, MotorError> {
         if minutos == 0 || minutos > RESERVA_MAX_MIN {
-            return Err(MotorError::Invalido(format!("\"minutos\" precisa ser de 1 a {RESERVA_MAX_MIN} (ou use /motor/reservar/liberar).")));
+            return Err(MotorError::Invalido(format!(
+                "\"minutos\" precisa ser de 1 a {RESERVA_MAX_MIN} (ou use /motor/reservar/liberar)."
+            )));
         }
         let agora = now_unix();
         let desde = self.reserva_ativa().map(|r| r.desde).unwrap_or(agora);
@@ -1685,7 +1690,8 @@ impl Motor {
                 let destino = self.paths.models_dir().join(&x.arquivo);
                 let base = m.tamanho;
                 let cb2 = |p: Progress| self.task_progress(tid, Progress { baixado: base + p.baixado, total: Some(total) });
-                download::download_file(&self.http, &url, &destino, Some(&x.sha256), Some(x.tamanho), cancel, &cb2, token.as_deref()).await?;
+                download::download_file(&self.http, &url, &destino, Some(&x.sha256), Some(x.tamanho), cancel, &cb2, token.as_deref())
+                    .await?;
                 Some(destino)
             }
             _ => None,

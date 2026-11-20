@@ -250,11 +250,16 @@ pub fn catalogo_com(itens: &[(&str, &str, &str, &str, u64, bool)]) -> Catalog {
 
 /// Manifesto de voz e transcrição para os testes (motores Vulkan e processador deste sistema).
 pub fn manifesto_audio_simulado() -> ignis_core::audio::ManifestoAudio {
-    use ignis_core::audio::{Familia, ManifestoAudio, ModeloAudio, MotorAudio};
+    use ignis_core::audio::{ArquivoModelo, Familia, ManifestoAudio, ModeloAudio, MotorAudio};
     let so = current_os().to_string();
     let exe = |n: &str| if cfg!(windows) { format!("{n}.exe") } else { n.to_string() };
     let mut motores = Vec::new();
-    for (fam, chave, servidor) in [(Familia::Voz, "voz", "tts-server"), (Familia::Transcricao, "transcricao", "whisper-server")] {
+    for (fam, chave, servidor) in [
+        (Familia::Voz, "voz", "tts-server"),
+        (Familia::Transcricao, "transcricao", "whisper-server"),
+        (Familia::VozComercial, "voz-comercial", "tts-server"),
+        (Familia::Imagem, "imagem", "sd-server"),
+    ] {
         for backend in [Backend::Vulkan, Backend::Cpu] {
             let b = if backend == Backend::Cpu { "cpu" } else { "vulkan" };
             motores.push(MotorAudio {
@@ -274,7 +279,10 @@ pub fn manifesto_audio_simulado() -> ignis_core::audio::ManifestoAudio {
         perfis: vec!["placa-grande".into(), "placa".into(), "placa-pequena".into(), "processador".into()],
         repo: "teste/teste".into(),
         revisao: "c".repeat(40),
-        arquivos: arquivos.iter().map(|n| AssetFile { nome: (*n).into(), sha256: "d".repeat(64), tamanho: 4 }).collect(),
+        arquivos: arquivos
+            .iter()
+            .map(|n| ArquivoModelo { nome: (*n).into(), sha256: "d".repeat(64), tamanho: 4, repo: None, revisao: None, caminho: None })
+            .collect(),
         licenca: "MIT".into(),
         licenca_url: "https://exemplo.invalid".into(),
         uso_comercial: true,
@@ -288,6 +296,8 @@ pub fn manifesto_audio_simulado() -> ignis_core::audio::ManifestoAudio {
         modelos: vec![
             modelo("voz-teste", Familia::Voz, &["base.gguf", "tok.gguf"]),
             modelo("whisper-teste", Familia::Transcricao, &["ggml.bin"]),
+            modelo("chatterbox-teste", Familia::VozComercial, &["mtl.gguf", "codec.gguf"]),
+            modelo("imagem-teste", Familia::Imagem, &["difusao.gguf", "texto.gguf", "vae.safetensors"]),
         ],
     }
 }

@@ -192,6 +192,7 @@ const ICONES = {
   conversa: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5Z"/></svg>',
   codigo: '<svg viewBox="0 0 24 24"><path d="m9 8-4 4 4 4M15 8l4 4-4 4"/></svg>',
   embeddings: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg>',
+  visao: '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
   baixando: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   motor: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>',
   repo: '<svg viewBox="0 0 24 24"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/></svg>',
@@ -200,7 +201,12 @@ const ICONES = {
 const NOME_FABRICANTE = { amd: "AMD", nvidia: "NVIDIA", intel: "Intel" };
 const ORIGEM = { "catalogo": "do catálogo do Ignis", "hugging-face": "do Hugging Face", "ollama-referencia": "lido da pasta do Ollama", "ollama-copia": "copiado do Ollama", "arquivo": "arquivo seu", "no-computador": "já estava no computador" };
 const origemTexto = (o) => o.tipo === "no-computador" && o.fonte ? `já estava no computador (${o.fonte})` : (ORIGEM[o.tipo] || o.tipo);
-const TIPO = { conversa: "Conversa", codigo: "Código", embeddings: "Busca por significado" };
+const TIPO = { conversa: "Conversa", codigo: "Código", embeddings: "Busca por significado", visao: "Vê imagens" };
+const USO_COMERCIAL = { sim: ["Uso comercial: sim", "ok"], nao: ["Uso comercial: não", "erro"], condicional: ["Uso comercial: com condições", "alerta"] };
+const etiquetaComercial = (m) => {
+  const u = USO_COMERCIAL[m.uso_comercial];
+  return u ? `<span class="etiqueta" title="${esc(m.uso_comercial_nota || "")}" style="color:var(--${u[1]})">${u[0]}</span>` : "";
+};
 
 // ---------- navegação ----------
 function irPara(nome) {
@@ -374,11 +380,12 @@ function renderModelos() {
   const rec = modelos.recursos || {};
   const inst = modelos.instalados;
   pinta($("instalados"), inst.length ? inst.map((m) => {
-    const tipo = m.embeddings ? "embeddings" : (m.id.includes("coder") ? "codigo" : "conversa");
+    const tipo = m.embeddings ? "embeddings" : (m.visao ? "visao" : (m.id.includes("coder") ? "codigo" : "conversa"));
     const etiquetas = [
       m.carregado ? '<span class="etiqueta brasa">Carregado</span>' : "",
       m.padrao ? '<span class="etiqueta">Padrão</span>' : "",
       m.visao ? '<span class="etiqueta">Visão/áudio</span>' : "",
+      etiquetaComercial(m),
       m.existe ? "" : '<span class="etiqueta erro">Arquivo sumiu</span>',
     ].join("");
     const cor = { "placa": "ok", "dividido": "alerta", "processador": "alerta", "nao-cabe": "erro" }[m.encaixe] || "";
@@ -423,7 +430,7 @@ function renderModelos() {
       `<button class="botao primario" data-acao="baixar" data-id="${esc(c.id)}" data-encaixe="${esc(c.encaixe)}" data-aviso="${esc(c.aviso || "")}">${c.parcial > 0 ? "Retomar" : "Baixar"}</button>`;
     return `<div class="modelo">
       <h3>${esc(c.nome)}</h3>
-      <div class="etiquetas"><span class="etiqueta">${tamanho(c.tamanho)}</span><span class="etiqueta">${esc(c.quantizacao)}</span><span class="etiqueta">${esc(TIPO[c.tipo] || c.tipo)}</span></div>
+      <div class="etiquetas"><span class="etiqueta">${tamanho(c.tamanho)}</span><span class="etiqueta">${esc(c.quantizacao)}</span><span class="etiqueta">${esc(TIPO[c.tipo] || c.tipo)}</span>${etiquetaComercial(c)}</div>
       <div class="uso">${esc(c.uso)}</div>
       ${t ? `<div class="progresso"><div style="width:${(100 * c.tarefa.baixado / c.tamanho).toFixed(1)}%"></div></div>` : textoCabe(c, rec)}
       <div class="rodape-modelo"><span class="licenca">Licença: <button class="botao link" data-link="${esc(c.licenca_url)}">${esc(c.licenca)}</button></span>${botao}</div>

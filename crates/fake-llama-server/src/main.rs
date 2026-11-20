@@ -109,6 +109,8 @@ async fn main() {
     match cfg.tipo.as_str() {
         "voz" => return audio::voz(args, cfg.demora_subir_ms).await,
         "transcricao" => return audio::transcricao(args, cfg.demora_subir_ms).await,
+        "voz-comercial" => return audio::voz_comercial(args, cfg.demora_subir_ms).await,
+        "imagem" => return audio::imagem(args, cfg.demora_subir_ms).await,
         _ => {}
     }
     let model = arg(&args, &["-m", "--model"]).unwrap_or_default();

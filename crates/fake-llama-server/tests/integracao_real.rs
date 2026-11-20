@@ -138,6 +138,65 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
     assert!(!texto.is_empty());
     assert_eq!(motor.loaded_info().unwrap().backend, Backend::Cpu);
 
+    // saída estruturada (pedido da Fornalha): response_format com json_schema passa direto ao
+    // llama-server, que obriga a resposta a seguir o esquema (gramática)
+    let esquema = json!({
+        "type": "object",
+        "properties": {
+            "nome": {"type": "string"},
+            "versao": {"type": "integer"},
+            "cenas": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 3},
+            "publicado": {"type": "boolean"}
+        },
+        "required": ["nome", "versao", "cenas", "publicado"],
+        "additionalProperties": false
+    });
+    for stream in [false, true] {
+        let r = c
+            .post(format!("{base}/v1/chat/completions"))
+            .json(&json!({
+                "model": id, "temperature": 0, "max_tokens": 200, "stream": stream,
+                "messages": [{"role": "user", "content": "Crie o game.project.json de um jogo de plataforma chamado Fogo."}],
+                "response_format": {"type": "json_schema", "json_schema": {"name": "game_project", "strict": true, "schema": esquema}}
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status().as_u16(), 200);
+        let texto = if stream {
+            let corpo = r.text().await.unwrap();
+            corpo
+                .lines()
+                .filter_map(|l| l.strip_prefix("data: "))
+                .filter_map(|j| serde_json::from_str::<Value>(j).ok())
+                .filter_map(|v| v["choices"][0]["delta"]["content"].as_str().map(String::from))
+                .collect::<String>()
+        } else {
+            let v: Value = r.json().await.unwrap();
+            v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string()
+        };
+        eprintln!("json_schema (stream={stream}): {texto}");
+        let obj: Value = serde_json::from_str(texto.trim()).unwrap_or_else(|e| panic!("não é JSON válido ({e}): {texto}"));
+        let o = obj.as_object().unwrap();
+        assert!(o["nome"].is_string() && o["versao"].is_i64() && o["publicado"].is_boolean(), "{obj}");
+        let cenas = o["cenas"].as_array().unwrap();
+        assert!((1..=3).contains(&cenas.len()) && cenas.iter().all(|x| x.is_string()), "{obj}");
+        let mut chaves: Vec<&String> = o.keys().collect();
+        chaves.sort();
+        assert_eq!(chaves, ["cenas", "nome", "publicado", "versao"], "nada além do esquema");
+    }
+    // e o modo JSON simples
+    let r = c
+        .post(format!("{base}/v1/chat/completions"))
+        .json(&json!({"model": id, "temperature": 0, "max_tokens": 60, "response_format": {"type": "json_object"},
+                      "messages": [{"role": "user", "content": "Dê um objeto JSON com a cor do fogo."}]}))
+        .send()
+        .await
+        .unwrap();
+    let v: Value = r.json().await.unwrap();
+    let texto = v["choices"][0]["message"]["content"].as_str().unwrap_or("");
+    assert!(serde_json::from_str::<Value>(texto.trim()).map(|x| x.is_object()).unwrap_or(false), "json_object: {texto}");
+
     // conversa com streaming
     let resp = c
         .post(format!("{base}/v1/chat/completions"))

@@ -1,10 +1,12 @@
-//! Voz (omnivoice.cpp, `tts-server`) e transcrição (whisper.cpp, `whisper-server`).
+//! Motores auxiliares: voz (omnivoice.cpp, `tts-server`), voz comercial (Chatterbox
+//! Multilingual pelo codec.cpp, `tts-server`), transcrição (whisper.cpp, `whisper-server`)
+//! e geração de imagem (stable-diffusion.cpp, `sd-server`).
 //!
-//! Os dois são da mesma família do llama.cpp (GGML): rodam na placa por Vulkan
+//! Todos são da mesma família do llama.cpp (GGML): rodam na placa por Vulkan
 //! (AMD, Intel e NVIDIA) ou no processador. O Ignis baixa só a versão que serve
 //! para a placa, sobe o servidor quando alguém pede e repassa as rotas no
 //! formato da OpenAI (`/v1/audio/speech`, `/v1/audio/voices`,
-//! `/v1/audio/transcriptions`, `/v1/audio/translations`).
+//! `/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/images/generations`).
 
 use std::path::{Path, PathBuf};
 
@@ -24,15 +26,32 @@ const MARCADOR: &str = ".ignis-audio.json";
 pub enum Familia {
     Voz,
     Transcricao,
+    /// Chatterbox Multilingual (MIT): voz que pode ir para produto pago.
+    VozComercial,
+    /// stable-diffusion.cpp com Z-Image Turbo (Apache 2.0).
+    Imagem,
 }
 
 impl Familia {
-    pub const TODAS: [Familia; 2] = [Familia::Voz, Familia::Transcricao];
+    pub const TODAS: [Familia; 4] = [Familia::Voz, Familia::Transcricao, Familia::VozComercial, Familia::Imagem];
+    /// O que "Preparar" baixa quando ninguém diz o quê (como antes: voz e transcrição).
+    pub const PADRAO: [Familia; 2] = [Familia::Voz, Familia::Transcricao];
+
+    pub fn indice(self) -> usize {
+        match self {
+            Familia::Voz => 0,
+            Familia::Transcricao => 1,
+            Familia::VozComercial => 2,
+            Familia::Imagem => 3,
+        }
+    }
 
     pub fn nome(self) -> &'static str {
         match self {
             Familia::Voz => "voz",
             Familia::Transcricao => "transcrição",
+            Familia::VozComercial => "voz comercial",
+            Familia::Imagem => "geração de imagem",
         }
     }
 
@@ -40,6 +59,8 @@ impl Familia {
         match self {
             Familia::Voz => "voz",
             Familia::Transcricao => "transcricao",
+            Familia::VozComercial => "voz-comercial",
+            Familia::Imagem => "imagem",
         }
     }
 
@@ -47,9 +68,36 @@ impl Familia {
         match s {
             "voz" => Some(Familia::Voz),
             "transcricao" | "transcrição" => Some(Familia::Transcricao),
+            "voz-comercial" | "voz_comercial" | "chatterbox" => Some(Familia::VozComercial),
+            "imagem" | "imagens" => Some(Familia::Imagem),
             _ => None,
         }
     }
+
+    /// Rota que diz que o servidor está pronto (o sd-server não tem /health).
+    pub fn rota_saude(self) -> &'static str {
+        match self {
+            Familia::Imagem => "/v1/models",
+            _ => "/health",
+        }
+    }
+}
+
+/// Um arquivo de modelo. Por padrão vem do repositório do modelo; `repo`, `revisao` e
+/// `caminho` servem para modelos montados com arquivos de repositórios diferentes
+/// (a imagem usa o modelo de difusão, o codificador de texto e o VAE).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArquivoModelo {
+    pub nome: String,
+    pub sha256: String,
+    pub tamanho: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revisao: Option<String>,
+    /// Caminho dentro do repositório, se não for o próprio nome.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caminho: Option<String>,
 }
 
 /// Um pacote de motor (uma família, um sistema, um backend).
@@ -73,7 +121,7 @@ pub struct ModeloAudio {
     pub perfis: Vec<String>,
     pub repo: String,
     pub revisao: String,
-    pub arquivos: Vec<AssetFile>,
+    pub arquivos: Vec<ArquivoModelo>,
     pub licenca: String,
     pub licenca_url: String,
     pub uso_comercial: bool,
@@ -85,8 +133,14 @@ impl ModeloAudio {
         self.arquivos.iter().map(|a| a.tamanho).sum()
     }
 
-    pub fn url(&self, a: &AssetFile) -> String {
-        format!("{}/{}/resolve/{}/{}", crate::hub::base_url(), self.repo, self.revisao, a.nome)
+    pub fn url(&self, a: &ArquivoModelo) -> String {
+        format!(
+            "{}/{}/resolve/{}/{}",
+            crate::hub::base_url(),
+            a.repo.as_deref().unwrap_or(&self.repo),
+            a.revisao.as_deref().unwrap_or(&self.revisao),
+            a.caminho.as_deref().unwrap_or(&a.nome)
+        )
     }
 }
 
@@ -121,8 +175,11 @@ impl ManifestoAudio {
             if m.arquivos.is_empty() || m.arquivos.iter().any(|a| !hex(&a.sha256) || a.tamanho == 0) {
                 return Err(format!("modelo {} sem SHA-256 ou tamanho", m.id));
             }
-            if m.revisao.len() != 40 {
+            if m.revisao.len() != 40 || m.arquivos.iter().any(|a| a.revisao.as_ref().is_some_and(|r| r.len() != 40)) {
                 return Err(format!("modelo {} sem revisão fixada", m.id));
+            }
+            if m.arquivos.iter().any(|a| a.nome.contains(['/', '\\']) || a.nome.contains("..")) {
+                return Err(format!("modelo {} com nome de arquivo inválido", m.id));
             }
         }
         for f in Familia::TODAS {
@@ -153,6 +210,12 @@ pub fn perfil(fam: Familia, usa_placa: bool, vram_mb: Option<u64>) -> &'static s
         Familia::Voz => "placa-pequena",
         Familia::Transcricao if usa_placa && vram >= 2_000 => "placa",
         Familia::Transcricao => "processador",
+        Familia::VozComercial if !usa_placa => "processador",
+        Familia::VozComercial if vram >= 3_000 => "placa",
+        Familia::VozComercial => "placa-pequena",
+        Familia::Imagem if !usa_placa => "processador",
+        Familia::Imagem if vram >= 7_000 => "placa",
+        Familia::Imagem => "placa-pequena",
     }
 }
 
@@ -203,6 +266,116 @@ pub fn args_voz(base: &Path, tokenizer: &Path) -> Vec<String> {
         "--port".into(),
         "{porta}".into(),
     ]
+}
+
+/// Argumentos do servidor de voz comercial (codec.cpp: modelo principal + codec).
+/// Na versão Vulkan, `--gpu` liga a placa.
+pub fn args_voz_comercial(backbone: &Path, codec: &Path, gpu: bool) -> Vec<String> {
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(1, 8);
+    let mut a = vec![
+        "--backbone".into(),
+        backbone.to_string_lossy().into_owned(),
+        "--model".into(),
+        codec.to_string_lossy().into_owned(),
+        "--host".into(),
+        "127.0.0.1".into(),
+        "--port".into(),
+        "{porta}".into(),
+        "--n-threads".into(),
+        threads.to_string(),
+        "--model-id".into(),
+        "chatterbox".into(),
+    ];
+    // amostragem de referência do Chatterbox Multilingual (docs/models/chatterbox.md do codec.cpp)
+    for (f, v) in [
+        ("--temp", "0.8"),
+        ("--top-k", "0"),
+        ("--top-p", "1.0"),
+        ("--min-p", "0.05"),
+        ("--repeat-penalty", "1.2"),
+        ("--repeat-last-n", "1024"),
+        ("--samplers", "penalties;temperature;min_p;top_p"),
+    ] {
+        a.push(f.into());
+        a.push(v.into());
+    }
+    if gpu {
+        a.push("--gpu".into());
+    }
+    a
+}
+
+/// Argumentos do servidor de imagem (sd-server com Z-Image Turbo: modelo de difusão,
+/// codificador de texto e VAE). Turbo: 8 passos, sem CFG. Os pesos ficam na RAM e vão
+/// para a placa quando precisa (`--offload-to-cpu`), e o VAE em blocos: cabe em 8 GB.
+/// Tamanho padrão (quando o pedido não diz): 1024x1024 na placa, 512x512 no processador.
+pub fn args_imagem(difusao: &Path, texto: &Path, vae: &Path, gpu: bool) -> Vec<String> {
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(1, 16);
+    let lado = if gpu { "1024" } else { "512" };
+    vec![
+        "--diffusion-model".into(),
+        difusao.to_string_lossy().into_owned(),
+        "--llm".into(),
+        texto.to_string_lossy().into_owned(),
+        "--vae".into(),
+        vae.to_string_lossy().into_owned(),
+        "--listen-ip".into(),
+        "127.0.0.1".into(),
+        "--listen-port".into(),
+        "{porta}".into(),
+        "--offload-to-cpu".into(),
+        "--vae-tiling".into(),
+        "--cfg-scale".into(),
+        "1.0".into(),
+        "--steps".into(),
+        "8".into(),
+        "-W".into(),
+        lado.into(),
+        "-H".into(),
+        lado.into(),
+        "-t".into(),
+        threads.to_string(),
+    ]
+}
+
+/// Texto do jeito que o Chatterbox Multilingual espera (como o tokenizador original):
+/// minúsculas, Unicode NFKD e a marca do idioma na frente (`[pt]`).
+pub fn texto_chatterbox(texto: &str, idioma: Option<&str>) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let lang = codigo_idioma(idioma.unwrap_or("pt"));
+    let limpo: String = texto.to_lowercase().nfkd().collect();
+    format!("[{lang}]{limpo}")
+}
+
+/// "Portuguese", "português", "pt-BR" → "pt" (os 23 idiomas do Chatterbox Multilingual).
+pub fn codigo_idioma(s: &str) -> &'static str {
+    let s = s.trim().to_lowercase();
+    let s = s.split(['-', '_']).next().unwrap_or("");
+    match s {
+        "ar" | "arabic" | "árabe" | "arabe" => "ar",
+        "da" | "danish" | "dinamarquês" => "da",
+        "de" | "german" | "alemão" | "alemao" => "de",
+        "el" | "greek" | "grego" => "el",
+        "en" | "english" | "inglês" | "ingles" => "en",
+        "es" | "spanish" | "espanhol" => "es",
+        "fi" | "finnish" | "finlandês" => "fi",
+        "fr" | "french" | "francês" | "frances" => "fr",
+        "he" | "hebrew" | "hebraico" => "he",
+        "hi" | "hindi" => "hi",
+        "it" | "italian" | "italiano" => "it",
+        "ja" | "japanese" | "japonês" | "japones" => "ja",
+        "ko" | "korean" | "coreano" => "ko",
+        "ms" | "malay" | "malaio" => "ms",
+        "nl" | "dutch" | "holandês" => "nl",
+        "no" | "nb" | "norwegian" | "norueguês" => "no",
+        "pl" | "polish" | "polonês" => "pl",
+        "ru" | "russian" | "russo" => "ru",
+        "sv" | "swedish" | "sueco" => "sv",
+        "sw" | "swahili" | "suaíli" => "sw",
+        "tr" | "turkish" | "turco" => "tr",
+        "zh" | "chinese" | "chinês" | "chines" => "zh",
+        _ => "pt",
+    }
 }
 
 /// Argumentos do servidor de transcrição (rota no formato da OpenAI).

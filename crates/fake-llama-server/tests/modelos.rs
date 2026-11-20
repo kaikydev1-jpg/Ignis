@@ -250,7 +250,7 @@ async fn procurar_e_aplicar_atualizacao_do_catalogo() {
     assert!(r.motor.is_none(), "motor simulado (b1) não é mais novo");
     assert!(avisos_texto(m).contains("Atualização disponível"));
     // nada muda sem aceitar
-    assert_eq!(m.catalog().versao, 1);
+    assert_eq!(m.catalog().versao, ignis_core::catalog::Catalog::embedded().versao);
     m.apply_update("catalogo").unwrap();
     assert_eq!(m.catalog().versao, 99);
     assert!(amb.paths.catalog_override().exists(), "catálogo novo guardado para os próximos inícios");

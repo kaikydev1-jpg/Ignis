@@ -118,7 +118,19 @@ mod tests {
         for l in ["cc-by-nc-4.0", "CC BY-NC 4.0 (uso não comercial)", "cc-by-nc-sa-4.0", "qwen-research", "mnpl-0.1", "mrl"] {
             assert_eq!(classificar(Some(l)).uso_comercial, NAO, "{l}");
         }
-        for l in ["llama3.1", "llama3.2", "gemma", "Termos de uso do Gemma (Google)", "openrail++", "creativeml-openrail-m", "other", "gpl-3.0", "cc-by-sa-4.0", "qwen", "xyz"] {
+        for l in [
+            "llama3.1",
+            "llama3.2",
+            "gemma",
+            "Termos de uso do Gemma (Google)",
+            "openrail++",
+            "creativeml-openrail-m",
+            "other",
+            "gpl-3.0",
+            "cc-by-sa-4.0",
+            "qwen",
+            "xyz",
+        ] {
             assert_eq!(classificar(Some(l)).uso_comercial, CONDICIONAL, "{l}");
         }
         let sem = classificar(None);

@@ -75,7 +75,8 @@ impl CatalogModel {
     pub fn shape(&self) -> ModelShape {
         let a = &self.arquitetura;
         ModelShape {
-            tamanho_arquivo: self.tamanho,
+            // o arquivo de visão também vai para a memória
+            tamanho_arquivo: self.tamanho_total(),
             camadas: a.camadas,
             kv_bytes_por_token: crate::gguf::kv_bytes_por_token(a.camadas, a.cabecas_kv, a.dim_k, a.dim_v),
             contexto_max: a.contexto_max,

@@ -112,6 +112,7 @@ pub async fn bench_one_com(
         args_proprios: None,
         cache_kv: crate::budget::CacheKv::F16,
         atencao_rapida: None,
+        rota_saude: None,
     };
     let mut result = BenchResult {
         variante: variante.into(),
