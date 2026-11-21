@@ -276,3 +276,76 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
 
     motor.shutdown_all().await;
 }
+
+/// Voz comercial DE VERDADE pelo Ignis: baixa o motor da release `motores-audio-2`
+/// (GitHub) e o Chatterbox Multilingual (Hugging Face) pelo manifesto embutido,
+/// confere os SHA-256, sobe o `tts-server` do codec.cpp no processador e fala em
+/// português por `/v1/audio/speech` com `"model": "chatterbox"`.
+/// Roda com `IGNIS_TEST_VOZ_COMERCIAL=1` (baixa ~870 MB).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn voz_comercial_de_verdade_pelo_ignis() {
+    if std::env::var("IGNIS_TEST_VOZ_COMERCIAL").as_deref() != Ok("1") {
+        eprintln!("pulando: defina IGNIS_TEST_VOZ_COMERCIAL=1");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths::under(tmp.path());
+    paths.ensure().unwrap();
+    std::fs::write(paths.config_file(), serde_json::to_vec(&json!({"primeira_execucao_feita": true, "porta": free_port()})).unwrap())
+        .unwrap();
+    let motor = Motor::new(
+        paths.clone(),
+        MotorOptions {
+            detection_override: Some(sem_placa()),
+            tick: Duration::from_millis(200),
+            launcher: None,
+            load_timeout: Duration::from_secs(300),
+            catalog_override: None,
+            manifest_override: None,
+            auto_teste: false,
+            extras_motor: None,
+            pastas_locais: Some(Default::default()),
+            audio_manifest_override: None,
+            instalacao_override: None,
+        },
+    );
+    motor.start_background();
+    motor.detect_now().await;
+    let base = subir_api(&motor).await;
+    let c = cliente();
+
+    let t0 = Instant::now();
+    let r = c.post(format!("{base}/motor/audio/preparar")).json(&json!({"familias": ["voz-comercial"]})).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "{}", r.text().await.unwrap_or_default());
+    let mut plano = Value::Null;
+    while t0.elapsed() < Duration::from_secs(1200) {
+        plano = c.get(format!("{base}/motor/audio")).send().await.unwrap().json().await.unwrap();
+        if plano["voz-comercial"]["preparado"] == json!(true) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    assert_eq!(plano["voz-comercial"]["preparado"], json!(true), "não preparou: {plano} / {}", avisos_texto(&motor));
+    eprintln!("voz comercial preparada em {:.0}s", t0.elapsed().as_secs_f32());
+
+    let t0 = Instant::now();
+    let r = c
+        .post(format!("{base}/v1/audio/speech"))
+        .json(&json!({"model": "chatterbox", "input": "Olá! Esta é a voz comercial do Ignis.", "language": "Portuguese", "response_format": "wav", "seed": 42}))
+        .timeout(Duration::from_secs(600))
+        .send()
+        .await
+        .unwrap();
+    let status = r.status().as_u16();
+    let audio = r.bytes().await.unwrap();
+    assert_eq!(status, 200, "{} / {}", String::from_utf8_lossy(&audio[..audio.len().min(500)]), avisos_texto(&motor));
+    eprintln!("fala gerada em {:.0}s: {} bytes", t0.elapsed().as_secs_f32(), audio.len());
+    assert_eq!(&audio[..4], b"RIFF");
+    assert!(audio.len() > 20_000, "fala curta demais: {} bytes", audio.len());
+    let estado: Value = c.get(format!("{base}/motor/audio")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(estado["voz-comercial"]["rodando"]["backend"], "cpu", "{estado}");
+    if let Some(dir) = std::env::var_os("IGNIS_TEST_SAIDA") {
+        let _ = std::fs::write(PathBuf::from(dir).join("voz-comercial-pelo-ignis.wav"), &audio);
+    }
+    motor.shutdown_all().await;
+}

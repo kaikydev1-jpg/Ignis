@@ -58,9 +58,17 @@ Não instala nada e não precisa de libfuse2. Também dá para usar o Flatpak.
 Fechar a janela deixa o Ignis perto do relógio. Para encerrar, use **Sair** no menu do ícone.
 
 ## Novo nesta versão
-- **Mais conversa na mesma placa.** A memória da conversa pode ser guardada em **8 bits** (ocupa metade e cabe quase o dobro), com volta automática para 16 bits se a placa não aceitar. O tamanho **automático** usa o maior que cabe na sua placa, deixando 1 GB livre para jogos: quanto mais forte a placa, maior.
-- **Barra da memória da conversa** em cada modelo, como no LM Studio: arraste e veja quantos GB vai usar da placa e se cabe com folga.
-- **Para os aplicativos (Valkode, Azúria):** o Ignis informa o contexto que carregou de verdade, o tipo de cache e se a atenção rápida está ligada; `POST /motor/carregar` aceita `contexto` e `cache_kv`.
+- **Voz que pode ir para produto pago.** Além do OmniVoice (uso não comercial), o Ignis fala com o **Chatterbox Multilingual** (licença MIT, 23 idiomas, português incluso): basta mandar `"model": "chatterbox"` em `/v1/audio/speech`. Na janela, **Voz → Voz comercial → Preparar**.
+- **Gerar imagens, inclusive na RX 580.** Nova rota `/v1/images/generations` (formato da OpenAI) com o **Z-Image Turbo** (Apache 2.0, uso comercial permitido), pelo **Vulkan** (AMD, NVIDIA e Intel, sem precisar de CUDA nem ROCm) ou no processador. Na janela, **Voz → Imagem → Preparar**.
+- **Cada modelo diz se pode ser vendido:** `uso_comercial` = sim, não ou condicional, nos modelos do catálogo, nos do Hugging Face e nos de voz e imagem, com a licença e uma explicação curta.
+- **Reservar a placa** para outro programa por alguns minutos (`POST /motor/reservar`): o Ignis tira tudo da placa e não carrega nada até a reserva acabar.
+- **Conversa e embeddings juntos:** o modelo de embeddings fica carregado ao lado do de conversa quando os dois cabem.
+- **Estado mais completo:** `/motor/estado` lista os aceleradores (CUDA, ROCm, Vulkan) e a memória de vídeo total e livre.
+- **Qwen3-VL 4B** no catálogo: vê imagens e cabe numa placa de 8 GB (Apache 2.0).
+- **Respostas em JSON com esquema** (`response_format` com `json_schema`) confirmadas e documentadas.
+
+## Na versão 0.3.1
+- **Mais conversa na mesma placa.** Memória da conversa em **8 bits** e tamanho **automático** pelo que cabe na placa, com a **barra da memória da conversa** em cada modelo.
 
 ## Na versão 0.3.0
 - **Voz e transcrição pelo Ignis.** Fala com o **OmniVoice** (com clonagem de voz) e transcreve com o **Whisper**, na placa (AMD, NVIDIA ou Intel, pelo Vulkan) ou no processador, se a placa não der conta. Mesmo formato da OpenAI: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/translations` e `/v1/audio/voices`. Na janela, a nova seção **Voz** prepara, toca um teste e guarda vozes clonadas.

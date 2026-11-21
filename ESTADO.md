@@ -3,10 +3,14 @@
 > Toda retomada começa por aqui. Atualizado antes de cada pausa.
 
 ## Situação
-**Versão oficial 0.3.1** (GitHub Releases, sem login e sem prazo; as anteriores continuam lá):
+**Versão 0.4.0** (pedidos da Fornalha e da Erethea; publicada quando o CI ficar verde) e **0.3.1** antes dela (GitHub Releases, sem login e sem prazo; as anteriores continuam lá):
 https://github.com/kaikydev1-jpg/Ignis/releases/latest, com arquivos por sistema
 (`Ignis-Windows.exe`, `Ignis-Fedora.rpm`, `Ignis-Flatpak.flatpak`, `Ignis-Ubuntu-Debian.deb`,
 `Ignis-Linux.AppImage`, `Ignis-Matsu-OS.flatpak`, `instalar.sh`, `SHA256SUMS.txt`, `atualizacoes.json`).
+Novo na 0.4.0: **voz comercial** (Chatterbox Multilingual, MIT, `"model": "chatterbox"`), **geração de imagem** pelo Vulkan
+(Z-Image Turbo, Apache 2.0, `/v1/images/generations`), `uso_comercial` em cada modelo, **reservar a placa** (`/motor/reservar`),
+conversa + embeddings carregados juntos, aceleradores e VRAM no `/motor/estado`, Qwen3-VL 4B no catálogo e `json_schema` documentado.
+Motores novos na release `motores-audio-2` (que também leva os mesmos arquivos de voz e transcrição da `motores-audio-1`).
 Novo na 0.3.1: memória da conversa em 8 bits, contexto automático pelo que cabe na placa, contexto real informado aos apps (pedido do Valkode) e barra da memória da conversa por modelo.
 Na 0.3.0: **voz** (OmniVoice, com clonagem) e **transcrição** (Whisper) na placa pelo Vulkan
 ou no processador (motores na release `motores-audio-1`), e **atualizar com um clique** em todos os
@@ -32,6 +36,10 @@ Próximo passo: o criador instala a 0.3.0, roda o TESTE_DO_CRIADOR.md (seções 
   - abrir com o computador (Run do Windows, `.desktop` no Linux, AppImage e Flatpak);
   - atualizações separadas (app, motores, catálogo); o app **atualiza com um clique** (`atualizador.rs`): descobre o tipo de instalação (Windows/NSIS, RPM, deb, AppImage, Flatpak, Matsu OS, Fedora Atomic com RPM em camada), baixa só o arquivo dele da versão oficial, confere pelo `SHA256SUMS.txt` e a bandeja fecha, instala e reabre (Fedora Atomic: `rpm-ostree`, entra ao reiniciar); procura versão nova uma vez por dia (pode desligar), com notificação do sistema e item no menu do ícone;
   - **voz e transcrição** (`audio.rs`, `service_audio.rs`): omnivoice.cpp (`tts-server`) e whisper.cpp (`whisper-server`) compilados no CI (`motores-audio.yml`) em Vulkan e processador, modelos do Hugging Face com revisão e SHA-256 fixados, quantização pela memória de vídeo, sobe sob demanda, cai para o processador se a placa falhar, descarrega parado; API da OpenAI `/v1/audio/*` e vozes clonadas guardadas;
+  - **voz comercial e imagem** (0.4.0): codec.cpp (`tts-server`, Chatterbox Multilingual) e stable-diffusion.cpp (`sd-server`, Z-Image Turbo) no mesmo esquema da voz (famílias `voz-comercial` e `imagem` em `audio.rs`); `/v1/audio/speech` escolhe pelo `model`; `/v1/images/generations`; antes de gerar imagem na placa, tira o modelo de conversa parado;
+  - **dois modelos ao mesmo tempo** (0.4.0): lugar de conversa e lugar de embeddings (`service.rs`, `SLOT_CONVERSA`/`SLOT_EMBEDDINGS`), cada um com descarga por tempo e queda própria; o de embeddings parado sai se o de conversa precisar da placa;
+  - **reserva da placa** (0.4.0): `POST /motor/reservar {"mb","minutos"}` descarrega tudo e recusa carregar (503 `placa_reservada`) até acabar ou `POST /motor/reservar/liberar`;
+  - **uso comercial** (0.4.0, `licenca.rs`): catálogo com `uso_comercial` escolhido a dedo; Hugging Face e arquivos pela leitura do nome da licença;
   - dicas por distro (dnf, rpm-ostree, apt, pacman, zypper).
 - **Aplicativo** (`app/`, Tauri 2):
   - ícone na bandeja com menu Abrir / Modelo / Pausar-Retomar / Descarregar modelo / Procurar atualizações (vira "Atualizar para a versão X") / Sair;
@@ -90,6 +98,12 @@ Próximo passo: o criador instala a 0.3.0, roda o TESTE_DO_CRIADOR.md (seções 
 | Motores de áudio Vulkan sem placa (lavapipe) | sobem, não acham placa e seguem no processador gerando áudio |
 | Voz/transcrição pelo Ignis (servidores simulados) | falar com voz clonada, transcrever, traduzir, `/v1/models`, teste da janela, voz recusada não é guardada, apagar voz; placa falha → processador; sem preparar → 503 claro; descarrega parado |
 | Atualizar com um clique (versão oficial simulada) | soma errada na lista → recusa e não mexe em nada; soma certa → troca o AppImage e pede para fechar e reabrir com o comando certo |
+| **0.4.0** Testes automáticos | 174 no total (unidades + placa simulada; os de integração real só rodam de fato no CI); novos: `pedidos_fornalha.rs` (dois modelos juntos, trocar o de conversa sem tirar o de embeddings, descarga de cada um, reserva da placa, aceleradores e VRAM, uso comercial), `audio.rs` (voz comercial pelo campo `model` com o texto preparado, imagem no formato da OpenAI com validações e argumentos extras), `modelos.rs` (modelo de visão baixa o `mmproj` junto) |
+| **0.4.0** Voz comercial real no CI (codec.cpp, processador) | Linux e Windows: o Chatterbox Multilingual Q8_0 falou "Olá! Este é um teste do motor de voz do Ignis." (154 KB de WAV, 38 s no processador do CI); o Whisper transcreveu de volta, no Linux, exatamente "Olá, este é um teste do motor de voz do Ignis." |
+| **0.4.0** Imagem real no CI (stable-diffusion.cpp, processador) | Linux e Windows: Z-Image Turbo Q3_K + Qwen3 4B + VAE gerou um PNG de 256x256 com 4 passos (≈155 KB) em 69 s (Linux) e 88 s (Windows). O PNG é válido; o desenho não foi conferido a olho aqui |
+| **0.4.0** Motores Vulkan | voz comercial e imagem compilam com Vulkan no Linux e no Windows; a voz comercial Vulkan sobe e gera áudio num Vulkan de software (lavapipe). **Placa de verdade: não provado** |
+| **0.4.0** Voz comercial pelo Ignis de verdade (CI, processador) | teste `voz_comercial_de_verdade_pelo_ignis`: o Ignis baixa o motor da release `motores-audio-2` e o Chatterbox do Hugging Face pelo manifesto embutido, confere os SHA-256, sobe o `tts-server` e fala por `/v1/audio/speech` com `"model": "chatterbox"` (Linux e Windows) |
+| **0.4.0** `json_schema` | teste com o llama-server oficial no CI (com e sem streaming): a resposta segue o esquema e traz só as chaves pedidas |
 | Flatpak de verdade | instalou, rodou, leu a distro real do sistema (`/run/host`), gravou o autostart com `flatpak run` e rodou o llama-server oficial dentro do sandbox (41 tokens/s) |
 
 ## O que só a placa real prova
@@ -101,9 +115,12 @@ Está em **TESTE_DO_CRIADOR.md**:
 - ligar no Valkode;
 - capturar saídas reais de vulkaninfo/rocminfo/nvidia-smi para trocar as fixtures;
 - **voz e transcrição na placa de verdade** (RX 580 e outras pelo Vulkan): o CI só tem processador;
+- **0.4.0 (TESTE_DO_CRIADOR.md, seção 13):** imagem na RX 580 pelo Vulkan (tempo e memória), voz comercial na placa e se soa natural em português, reserva da placa liberando a memória de verdade, aceleradores reais no `/motor/estado`, conversa + embeddings juntos numa placa de 8 GB, Qwen3-VL 4B vendo uma foto;
+- **não testado nem com placa simulada:** o caso em que o modelo de conversa só cabe se o de embeddings sair (a lógica existe em `ensure_loaded`, mas os modelos de teste são pequenos demais para apertar a memória simulada);
 - **atualizar com um clique** em cada sistema de verdade (Windows, Fedora, Ubuntu, AppImage, Flatpak, Matsu OS, Fedora Atomic): o primeiro teste real é da 0.3.0 para a próxima versão.
 
 ## Próxima ação exata
+0. **0.4.0:** o criador instala, roda o TESTE_DO_CRIADOR.md seção 13 (imagem e voz comercial na RX 580, reserva, embeddings) e avisa a Fornalha e a Erethea das rotas novas (CONTRATO_VALKODE.md tem tudo).
 1. O criador instala a 0.3.0, roda o TESTE_DO_CRIADOR.md (seções 10, voz e transcrição, e 11, atualização) e manda o resultado (e o "Copiar relatório" onde algo der diferente).
 2. O criador passa o `docs/IGNIS_PARA_AZURIA.md` (seção 7 tem o texto pronto) para o chat do Azúria Voice.
 3. Trocar as fixtures de detecção pelas saídas reais capturadas (vulkaninfo/rocminfo/nvidia-smi).
@@ -114,6 +131,8 @@ Está em **TESTE_DO_CRIADOR.md**:
 - **Azúria Voice:** o chat dele vai ligar o Ignis (LLM, voz `ignis-tts`, transcrição) junto com a mudança de visual. Guia: `docs/IGNIS_PARA_AZURIA.md`.
 - **Valkode:** já tem o contrato (CONTRATO_VALKODE.md) e a resposta ao pedido do teste do motor.
 - **Música e efeitos sonoros** (ACE-Step, MusicGen, Stable Audio, AudioLDM2): não há versão GGML desses modelos; continuam no PyTorch do Azúria.
+- **Chatterbox em chinês e japonês:** o modelo pede a escrita convertida (Cangjie / hiragana) antes; o Ignis ainda não faz. Os outros 21 idiomas funcionam pelo `language`.
+- **Voz comercial com voz clonada:** o codec.cpp aceita, mas o Ignis ainda não liga as vozes clonadas ao Chatterbox (usa a voz do modelo).
 - **Voz CUDA/ROCm:** a 0.3.0 usa Vulkan (AMD, NVIDIA e Intel) e processador. Versões CUDA e ROCm do omnivoice.cpp ficam para depois, se o Vulkan não bastar na NVIDIA.
 
 ## Decisões tomadas
@@ -151,6 +170,10 @@ Está em **TESTE_DO_CRIADOR.md**:
 | Barra de título | **Integrada** (`decorations: false` + `shadow: true`; topo do app arrasta, botões próprios; arraste só começa ao mover o mouse para o duplo clique funcionar no Linux) | O criador mostrou que a barra do sistema (cinza, separada) é a "barra esquisita"; quer o topo embutido no app. Os botões seguem o sistema (o Linux dele usa bolinhas tipo Mac): lido de `gtk-decoration-layout` e do tema GTK, regra em `ignis_core::janela` |
 | Ollama | Opcional e discreto ("Mais opções"); o Ignis nunca precisa dele | O motor e os modelos são do próprio Ignis |
 | Modelos com termos | Conta da pessoa (token do Hugging Face), guardada só no computador (arquivo `hf-token`, permissão 600 no Linux) | Cada pessoa usa a própria conta; o token só vai ao huggingface.co |
+| Voz comercial (0.4.0) | **Chatterbox Multilingual** (MIT) pelo **codec.cpp** (`tts-server`), escolhido pelo `model` em `/v1/audio/speech`; texto em minúsculas + NFKD + `[idioma]` (o codec.cpp deixa isso para quem chama); amostragem de referência do modelo nos argumentos | Pedido da Fornalha: voz que possa ir para produto pago; OmniVoice é CC BY-NC |
+| Imagem (0.4.0) | **stable-diffusion.cpp** (`sd-server`) + **Z-Image Turbo** (Apache 2.0): Q4_0 nas placas de 7 GB+, Q3_K nas menores e no processador; `--offload-to-cpu` e VAE em blocos para caber em 8 GB; 8 passos, sem CFG | Roda pelo Vulkan (RX 580 sem ROCm); os binários oficiais de Linux pedem GLIBC 2.43, então o Ignis compila no Ubuntu 22.04 |
+| codec.cpp no Windows (0.4.0) | Compilado com o gcc do MSYS2 (a `libttsbackbone` usa opções do ligador GNU), exportando tudo e levando as DLLs do gcc | O MSVC não liga a `libttsbackbone` como o projeto escreveu |
+| Motores de voz/transcrição na `motores-audio-2` | Os mesmos arquivos da `motores-audio-1` (copiados e conferidos pelo SHA-256), sem recompilar | Não trocar binários já testados |
 | Contexto padrão | 8.192 tokens (reduz sozinho se não couber; mínimo 2.048) | Bom para conversa e código numa placa de 8 GB |
 
 ## Como testar
