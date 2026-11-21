@@ -27,6 +27,10 @@ use ignis_core::paths::Paths;
 use ignis_core::service::{Motor, MotorOptions};
 use serde_json::{json, Value};
 
+/// Os testes reais disputam o processador (o Chatterbox usa todos os núcleos e o teste de
+/// velocidade do llama-server tem limite de 30 s), então rodam um de cada vez.
+static UM_POR_VEZ: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn env_path(k: &str) -> Option<PathBuf> {
     std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_file())
 }
@@ -72,6 +76,7 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
         eprintln!("pulando: defina IGNIS_TEST_ENGINE_ARCHIVE e IGNIS_TEST_MODEL");
         return;
     };
+    let _vez = UM_POR_VEZ.lock().await;
     let base_url = servir_arquivo(pacote.clone()).await;
     let mut manifest = EngineManifest::embedded();
     manifest.url_base = base_url; // servidor local de teste no lugar do GitHub
@@ -288,6 +293,7 @@ async fn voz_comercial_de_verdade_pelo_ignis() {
         eprintln!("pulando: defina IGNIS_TEST_VOZ_COMERCIAL=1");
         return;
     }
+    let _vez = UM_POR_VEZ.lock().await;
     let tmp = tempfile::tempdir().unwrap();
     let paths = Paths::under(tmp.path());
     paths.ensure().unwrap();
