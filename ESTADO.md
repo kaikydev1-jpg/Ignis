@@ -3,7 +3,7 @@
 > Toda retomada começa por aqui. Atualizado antes de cada pausa.
 
 ## Situação
-**Versão 0.4.0** (pedidos da Fornalha e da Erethea; publicada quando o CI ficar verde) e **0.3.1** antes dela (GitHub Releases, sem login e sem prazo; as anteriores continuam lá):
+**Versão 0.4.0** (pedidos da Fornalha e da Erethea; publicada em 21/11/2026 com CI verde no Windows e no Linux) e **0.3.1** antes dela (GitHub Releases, sem login e sem prazo; as anteriores continuam lá):
 https://github.com/kaikydev1-jpg/Ignis/releases/latest, com arquivos por sistema
 (`Ignis-Windows.exe`, `Ignis-Fedora.rpm`, `Ignis-Flatpak.flatpak`, `Ignis-Ubuntu-Debian.deb`,
 `Ignis-Linux.AppImage`, `Ignis-Matsu-OS.flatpak`, `instalar.sh`, `SHA256SUMS.txt`, `atualizacoes.json`).
