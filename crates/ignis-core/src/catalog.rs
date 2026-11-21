@@ -16,6 +16,17 @@ pub struct Arquitetura {
     pub contexto_max: u32,
 }
 
+/// Arquivo que acompanha o modelo (mesmo repositório e revisão).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ArquivoExtra {
+    pub arquivo: String,
+    pub tamanho: u64,
+    pub sha256: String,
+    /// Endereço alternativo (testes com servidor local).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CatalogModel {
     pub id: String,
@@ -35,6 +46,12 @@ pub struct CatalogModel {
     pub arquitetura: Arquitetura,
     #[serde(default)]
     pub modelo_de_teste: bool,
+    /// "sim", "nao" ou "condicional" (escolhido a dedo; ver `licenca.rs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uso_comercial: Option<String>,
+    /// Arquivo de visão (mmproj) baixado junto, para o modelo ver imagens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mmproj: Option<ArquivoExtra>,
     /// Endereço alternativo (usado nos testes com servidor local).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
@@ -47,10 +64,19 @@ impl CatalogModel {
     pub fn embeddings(&self) -> bool {
         self.tipo == "embeddings"
     }
+    pub fn mmproj_url(&self) -> Option<String> {
+        let m = self.mmproj.as_ref()?;
+        Some(m.url.clone().unwrap_or_else(|| format!("https://huggingface.co/{}/resolve/{}/{}", self.repo, self.revisao, m.arquivo)))
+    }
+    /// Tamanho do download inteiro (modelo + visão).
+    pub fn tamanho_total(&self) -> u64 {
+        self.tamanho + self.mmproj.as_ref().map(|m| m.tamanho).unwrap_or(0)
+    }
     pub fn shape(&self) -> ModelShape {
         let a = &self.arquitetura;
         ModelShape {
-            tamanho_arquivo: self.tamanho,
+            // o arquivo de visão também vai para a memória
+            tamanho_arquivo: self.tamanho_total(),
             camadas: a.camadas,
             kv_bytes_por_token: crate::gguf::kv_bytes_por_token(a.camadas, a.cabecas_kv, a.dim_k, a.dim_v),
             contexto_max: a.contexto_max,
@@ -99,9 +125,22 @@ impl Catalog {
             if !m.arquivo.ends_with(".gguf") || m.arquivo.contains("..") || m.arquivo.contains('\\') {
                 return Err(format!("arquivo inválido em {}", m.id));
             }
-            if let Some(u) = &m.url {
+            if let Some(x) = &m.mmproj {
+                if x.sha256.len() != 64 || !x.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
+                    return Err(format!("SHA-256 do mmproj inválido em {}", m.id));
+                }
+                if !x.arquivo.ends_with(".gguf") || x.arquivo.contains("..") || x.arquivo.contains('\\') || x.arquivo.contains('/') {
+                    return Err(format!("mmproj inválido em {}", m.id));
+                }
+            }
+            for u in m.url.iter().chain(m.mmproj.iter().filter_map(|x| x.url.as_ref())) {
                 if !(u.starts_with("https://") || u.starts_with("http://127.0.0.1")) {
                     return Err(format!("url inválida em {}", m.id));
+                }
+            }
+            if let Some(u) = &m.uso_comercial {
+                if !matches!(u.as_str(), "sim" | "nao" | "condicional") {
+                    return Err(format!("uso_comercial inválido em {}", m.id));
                 }
             }
         }

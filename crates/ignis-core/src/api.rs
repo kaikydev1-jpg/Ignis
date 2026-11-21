@@ -123,6 +123,7 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/v1/completions", post(completions))
         .route("/v1/embeddings", post(embeddings))
         .route("/v1/audio/speech", post(audio_fala))
+        .route("/v1/images/generations", post(imagem_gerar))
         .route("/v1/audio/voices", get(vozes_listar).post(vozes_salvar))
         .route("/v1/audio/voices/{nome}", delete(voz_apagar))
         .route("/v1/audio/transcriptions", post(audio_transcrever))
@@ -150,6 +151,8 @@ pub fn router(motor: Arc<Motor>) -> Router {
         .route("/motor/modelos/descarregar", post(descarregar))
         .route("/motor/modelos/padrao", post(padrao))
         .route("/motor/parar", post(parar))
+        .route("/motor/reservar", get(reserva_estado).post(reservar).delete(reserva_liberar))
+        .route("/motor/reservar/liberar", post(reserva_liberar))
         .route("/motor/pausar", post(pausar))
         .route("/motor/retomar", post(retomar))
         .route("/motor/preparar", post(preparar))
@@ -182,13 +185,14 @@ async fn root() -> Response {
 }
 
 async fn v1_models(State(m): M) -> Response {
-    let info = m.loaded_info();
-    let carregado = info.as_ref().map(|i| i.modelo_id.clone());
+    let carregados = m.carregados();
     let data: Vec<Value> = m
         .installed_models()
         .into_iter()
         .filter(|x| x.existe())
         .map(|x| {
+            let info = carregados.iter().find(|i| i.modelo_id == x.id).cloned();
+            let comercial = m.uso_comercial_de(&x);
             json!({
                 "id": x.id,
                 "object": "model",
@@ -198,15 +202,18 @@ async fn v1_models(State(m): M) -> Response {
                     "nome": x.nome,
                     "tamanho": x.tamanho,
                     "embeddings": x.embeddings,
-                    "carregado": carregado.as_deref() == Some(x.id.as_str()),
+                    "carregado": info.is_some(),
+                    "licenca": comercial.licenca,
+                    "uso_comercial": comercial.uso_comercial,
+                    "uso_comercial_nota": comercial.nota,
                     "contexto_max": x.info.as_ref().map(|i| i.contexto_treino),
                     // só do modelo carregado (null nos outros)
-                    "contexto_carregado": info.as_ref().filter(|i| i.modelo_id == x.id).map(|i| i.contexto_carregado),
-                    "contexto_possivel": info.as_ref().filter(|i| i.modelo_id == x.id).and_then(|i| i.contexto_possivel),
-                    "atencao_rapida": info.as_ref().filter(|i| i.modelo_id == x.id).and_then(|i| i.atencao_rapida),
-                    "vram_livre_bytes": info.as_ref().filter(|i| i.modelo_id == x.id).and_then(|i| i.vram_livre_bytes),
+                    "contexto_carregado": info.as_ref().map(|i| i.contexto_carregado),
+                    "contexto_possivel": info.as_ref().and_then(|i| i.contexto_possivel),
+                    "atencao_rapida": info.as_ref().and_then(|i| i.atencao_rapida),
+                    "vram_livre_bytes": info.as_ref().and_then(|i| i.vram_livre_bytes),
                     // em uso no carregado; nos outros, o que será pedido ao carregar
-                    "cache_kv": info.as_ref().filter(|i| i.modelo_id == x.id).map(|i| i.cache_kv).unwrap_or_else(|| m.pedido_para(&x).cache),
+                    "cache_kv": info.as_ref().map(|i| i.cache_kv).unwrap_or_else(|| m.pedido_para(&x).cache),
                     "contexto_pedido": m.pedido_para(&x).contexto,
                 }
             })
@@ -217,11 +224,27 @@ async fn v1_models(State(m): M) -> Response {
     let estado_audio = m.audio_plano();
     if estado_audio["voz"]["preparado"] == json!(true) {
         data.push(json!({"id": "omnivoice", "object": "model", "owned_by": "ignis",
-            "ignis": {"tipo": "voz", "nome": estado_audio["voz"]["modelo_em_uso"]["nome"]}}));
+            "ignis": {"tipo": "voz", "nome": estado_audio["voz"]["modelo_em_uso"]["nome"],
+                      "licenca": estado_audio["voz"]["modelo_em_uso"]["licenca"],
+                      "uso_comercial": crate::licenca::de_bool(estado_audio["voz"]["modelo_em_uso"]["uso_comercial"].as_bool())}}));
+    }
+    if estado_audio["voz-comercial"]["preparado"] == json!(true) {
+        data.push(json!({"id": "chatterbox", "object": "model", "owned_by": "ignis",
+            "ignis": {"tipo": "voz", "nome": estado_audio["voz-comercial"]["modelo_em_uso"]["nome"],
+                      "licenca": estado_audio["voz-comercial"]["modelo_em_uso"]["licenca"],
+                      "uso_comercial": crate::licenca::de_bool(estado_audio["voz-comercial"]["modelo_em_uso"]["uso_comercial"].as_bool())}}));
+    }
+    if estado_audio["imagem"]["preparado"] == json!(true) {
+        data.push(json!({"id": "z-image-turbo", "object": "model", "owned_by": "ignis",
+            "ignis": {"tipo": "imagem", "nome": estado_audio["imagem"]["modelo_em_uso"]["nome"],
+                      "licenca": estado_audio["imagem"]["modelo_em_uso"]["licenca"],
+                      "uso_comercial": crate::licenca::de_bool(estado_audio["imagem"]["modelo_em_uso"]["uso_comercial"].as_bool())}}));
     }
     if estado_audio["transcricao"]["preparado"] == json!(true) {
         data.push(json!({"id": "whisper-1", "object": "model", "owned_by": "ignis",
-            "ignis": {"tipo": "transcricao", "nome": estado_audio["transcricao"]["modelo_em_uso"]["nome"]}}));
+            "ignis": {"tipo": "transcricao", "nome": estado_audio["transcricao"]["modelo_em_uso"]["nome"],
+                      "licenca": estado_audio["transcricao"]["modelo_em_uso"]["licenca"],
+                      "uso_comercial": crate::licenca::de_bool(estado_audio["transcricao"]["modelo_em_uso"]["uso_comercial"].as_bool())}}));
     }
     ok(json!({"object": "list", "data": data}))
 }
@@ -241,7 +264,15 @@ fn repassar_audio(resp: reqwest::Response, uso: crate::service::AudioUso) -> Res
     Response::builder().status(status).header(header::CONTENT_TYPE, ctype).body(Body::from_stream(corpo)).unwrap()
 }
 
-/// `POST /v1/audio/speech` (formato da OpenAI; servidor de voz omnivoice.cpp).
+/// Nomes de `model` que escolhem a voz comercial (Chatterbox Multilingual, MIT).
+pub fn eh_voz_comercial(model: &str) -> bool {
+    let m = model.trim().to_ascii_lowercase();
+    m.starts_with("chatterbox") || m == "ignis-tts-comercial" || m == "voz-comercial"
+}
+
+/// `POST /v1/audio/speech` (formato da OpenAI). O campo `model` escolhe a voz:
+/// `"chatterbox"` (ou `"chatterbox-multilingual"`) usa o Chatterbox Multilingual (MIT, pode ir
+/// para produto pago); qualquer outro (ou nenhum) usa o OmniVoice (CC BY-NC, com clonagem).
 async fn audio_fala(State(m): M, body: Bytes) -> Response {
     let mut v: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
@@ -249,6 +280,9 @@ async fn audio_fala(State(m): M, body: Bytes) -> Response {
     };
     if v.get("input").and_then(|x| x.as_str()).map(str::trim).unwrap_or("").is_empty() {
         return err_response(400, "invalid_request_error", "Mande o texto a falar em \"input\".");
+    }
+    if v.get("model").and_then(|x| x.as_str()).is_some_and(eh_voz_comercial) {
+        return voz_comercial(m, v).await;
     }
     // a OpenAI devolve um arquivo de áudio quando o formato não vem; o tts-server
     // devolveria PCM cru. Sem formato (ou com um que ele não tem, como mp3): WAV.
@@ -273,6 +307,130 @@ async fn audio_fala(State(m): M, body: Bytes) -> Response {
         Ok(r) => repassar_audio(r, uso),
         Err(e) => err_response(502, "motor_sem_resposta", &format!("O servidor de voz não respondeu ({e}). Tente de novo.")),
     }
+}
+
+/// Voz comercial (codec.cpp `tts-server` com o Chatterbox Multilingual).
+async fn voz_comercial(m: Arc<Motor>, mut v: Value) -> Response {
+    use crate::audio::Familia;
+    let texto = v["input"].as_str().unwrap_or_default().to_string();
+    let idioma = v.get("language").and_then(|x| x.as_str()).map(String::from);
+    v["input"] = json!(crate::audio::texto_chatterbox(&texto, idioma.as_deref()));
+    v["model"] = json!("chatterbox");
+    if let Some(o) = v.as_object_mut() {
+        o.remove("language");
+        // vozes do OmniVoice (clonadas no Ignis) não existem aqui: usa a voz do modelo
+        if o.get("voice").is_some_and(|x| x.is_string()) {
+            o.remove("voice");
+        }
+    }
+    let formato = v.get("response_format").and_then(|x| x.as_str()).unwrap_or("");
+    if formato != "wav" && formato != "pcm" {
+        v["response_format"] = json!("wav");
+    }
+    let uso = m.audio_inicio_uso(Familia::VozComercial);
+    let info = match m.garantir_audio(Familia::VozComercial).await {
+        Ok(i) => i,
+        Err(e) => return e.into_response(),
+    };
+    match m.http_local().post(format!("{}/v1/audio/speech", info.base_url)).json(&v).send().await {
+        Ok(r) => repassar_audio(r, uso),
+        Err(e) => err_response(502, "motor_sem_resposta", &format!("O servidor de voz comercial não respondeu ({e}). Tente de novo.")),
+    }
+}
+
+/// `POST /v1/images/generations` (formato da OpenAI; stable-diffusion.cpp `sd-server` com o
+/// Z-Image Turbo, Apache 2.0). Campos: `prompt`, `n`, `size` ("1024x1024"), `output_format`
+/// (png, jpeg, webp). Extras do Ignis: `seed`, `steps`, `negative_prompt`. A resposta vem
+/// sempre em `b64_json` (não há endereço de imagem: tudo fica neste computador).
+async fn imagem_gerar(State(m): M, body: Bytes) -> Response {
+    use crate::audio::Familia;
+    let mut v: Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return err_response(400, "json_invalido", "O corpo do pedido precisa ser JSON válido."),
+    };
+    let prompt = v.get("prompt").and_then(|x| x.as_str()).map(str::trim).unwrap_or("").to_string();
+    if prompt.is_empty() {
+        return err_response(400, "invalid_request_error", "Mande a descrição da imagem em \"prompt\".");
+    }
+    if v.get("response_format").and_then(|x| x.as_str()).is_some_and(|f| f == "url") {
+        return err_response(
+            400,
+            "invalid_request_error",
+            "O Ignis devolve a imagem só em \"b64_json\" (não há endereço: tudo fica neste computador).",
+        );
+    }
+    if let Some(size) = v.get("size").and_then(|x| x.as_str()) {
+        let ok = size == "auto"
+            || size.split_once('x').is_some_and(|(w, h)| {
+                let (w, h) = (w.parse::<u32>().unwrap_or(0), h.parse::<u32>().unwrap_or(0));
+                (64..=2048).contains(&w) && (64..=2048).contains(&h) && w % 16 == 0 && h % 16 == 0
+            });
+        if !ok {
+            return err_response(
+                400,
+                "invalid_request_error",
+                "\"size\" precisa ser LARGURAxALTURA (64 a 2048, múltiplos de 16), ex.: \"1024x1024\".",
+            );
+        }
+        if size == "auto" {
+            v.as_object_mut().map(|o| o.remove("size"));
+        }
+    }
+    if v.get("n").and_then(|x| x.as_u64()).is_some_and(|n| !(1..=4).contains(&n)) {
+        return err_response(400, "invalid_request_error", "\"n\" precisa ser de 1 a 4.");
+    }
+    // extras do Ignis viram parâmetros do stable-diffusion.cpp
+    let mut extra = serde_json::Map::new();
+    if let Some(s) = v.get("seed").and_then(|x| x.as_i64()) {
+        extra.insert("seed".into(), json!(s));
+    }
+    if let Some(n) = v.get("negative_prompt").and_then(|x| x.as_str()) {
+        extra.insert("negative_prompt".into(), json!(n));
+    }
+    if let Some(p) = v.get("steps").and_then(|x| x.as_u64()) {
+        if !(1..=50).contains(&p) {
+            return err_response(400, "invalid_request_error", "\"steps\" precisa ser de 1 a 50.");
+        }
+        extra.insert("sample_params".into(), json!({"sample_steps": p}));
+    }
+    // nada de argumentos escondidos vindos de fora
+    let limpo = prompt.replace("<sd_cpp_extra_args>", "").replace("</sd_cpp_extra_args>", "");
+    let prompt_final =
+        if extra.is_empty() { limpo } else { format!("{limpo}<sd_cpp_extra_args>{}</sd_cpp_extra_args>", Value::Object(extra)) };
+    let mut corpo = json!({"prompt": prompt_final});
+    for k in ["n", "size", "output_format", "output_compression"] {
+        if let Some(x) = v.get(k) {
+            corpo[k] = x.clone();
+        }
+    }
+    let uso = m.audio_inicio_uso(Familia::Imagem);
+    let info = match m.garantir_audio(Familia::Imagem).await {
+        Ok(i) => i,
+        Err(e) => return e.into_response(),
+    };
+    let t0 = std::time::Instant::now();
+    let r = match m.http_local().post(format!("{}/v1/images/generations", info.base_url)).json(&corpo).send().await {
+        Ok(r) => r,
+        Err(e) => return err_response(502, "motor_sem_resposta", &format!("O servidor de imagem não respondeu ({e}). Tente de novo.")),
+    };
+    let status = r.status().as_u16();
+    let bytes = match r.bytes().await {
+        Ok(b) => b,
+        Err(e) => return err_response(502, "motor_sem_resposta", &format!("A resposta da imagem foi interrompida ({e}).")),
+    };
+    drop(uso);
+    let mut resp: Value = serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({"erro": String::from_utf8_lossy(&bytes)}));
+    if status != 200 {
+        let msg = resp.get("message").or_else(|| resp.get("error")).and_then(|x| x.as_str()).unwrap_or("erro desconhecido").to_string();
+        return err_response(
+            if status == 400 { 400 } else { 502 },
+            "motor_falhou",
+            &format!("O servidor de imagem recusou: {}", msg.chars().take(300).collect::<String>()),
+        );
+    }
+    resp["ignis"] = json!({"motor": info.motor_nome, "backend": info.backend, "modelo": info.modelo_nome,
+                           "segundos": (t0.elapsed().as_secs_f64() * 10.0).round() / 10.0});
+    ok(resp)
 }
 
 async fn vozes_listar(State(m): M) -> Response {
@@ -359,7 +517,7 @@ async fn audio_preparar(State(m): M, body: Bytes) -> Response {
         .ok()
         .and_then(|v| v.get("familias").and_then(|f| f.as_array()).cloned())
         .map(|a| a.iter().filter_map(|x| x.as_str().and_then(crate::audio::Familia::de_texto)).collect())
-        .unwrap_or_else(|| crate::audio::Familia::TODAS.to_vec());
+        .unwrap_or_else(|| crate::audio::Familia::PADRAO.to_vec());
     match m.preparar_audio(pedidas) {
         Ok(()) => ok(json!({"ok": true})),
         Err(e) => e.into_response(),
@@ -453,7 +611,7 @@ async fn proxy(m: Arc<Motor>, path: &'static str, embeddings: bool, body: Bytes)
             Err(e) => return e.into_response(),
         },
     };
-    guard.activate();
+    guard.activate(info.embeddings);
     let req_id = guard.id.to_string();
     let url = format!("{}{}", info.base_url, path);
     let send = m.http_local().post(url).header(header::CONTENT_TYPE, "application/json").body(body).send();
@@ -590,7 +748,8 @@ async fn memoria_modelo(State(m): M, q: Q) -> Response {
     let det = m.detection();
     let placa = rec.usa_placa && rec.vram_livre_mb.is_some();
     // a memória do modelo que já está carregado volta a ficar livre ao trocar
-    let ocupado = m.loaded_info().map(|i| if placa { i.plano.memoria_placa_mb } else { i.plano.memoria_ram_mb }).unwrap_or(0);
+    let ocupado =
+        m.loaded_info_de(model.embeddings).map(|i| if placa { i.plano.memoria_placa_mb } else { i.plano.memoria_ram_mb }).unwrap_or(0);
     let livre = if placa { rec.vram_livre_mb.unwrap_or(0) } else { rec.ram_livre_mb } + ocupado;
     let total =
         if placa { det.as_ref().and_then(|d| d.principal()).and_then(|g| g.vram_total_mb) } else { det.as_ref().map(|d| d.ram_total_mb) };
@@ -612,7 +771,7 @@ async fn memoria_modelo(State(m): M, q: Q) -> Response {
     for c in caches {
         auto[c.nome()] = json!(budget::plan_com(&shape, &rec_livre, &budget::PedidoContexto { contexto: None, cache: c }).contexto);
     }
-    let carregado = m.loaded_info().filter(|i| i.modelo_id == model.id);
+    let carregado = m.loaded_info_de(model.embeddings).filter(|i| i.modelo_id == model.id);
     ok(json!({
         "modelo": model.id, "nome": model.nome, "embeddings": model.embeddings,
         "onde": if placa { "placa" } else { "ram" },
@@ -641,17 +800,19 @@ async fn modelos(State(m): M) -> Response {
     let rec = recursos_para(&m);
     let ctx = m.settings().contexto_preferido;
     let padrao = m.settings().modelo_padrao;
-    let carregado = m.loaded_info().map(|i| i.modelo_id);
+    let carregados: Vec<String> = m.carregados().into_iter().map(|i| i.modelo_id).collect();
     let tarefas = m.tarefas();
     let instalados: Vec<Value> = m
         .installed_models()
         .into_iter()
         .map(|x| {
             let plano = budget::plan(&x.shape(), &rec, ctx);
+            let comercial = m.uso_comercial_de(&x);
             json!({
                 "id": x.id, "nome": x.nome, "tamanho": x.tamanho, "origem": x.origem, "embeddings": x.embeddings,
-                "existe": x.existe(), "carregado": carregado.as_deref() == Some(x.id.as_str()),
-                "padrao": padrao.as_deref() == Some(x.id.as_str()), "licenca": x.licenca, "arquivo": x.arquivo,
+                "existe": x.existe(), "carregado": carregados.contains(&x.id),
+                "uso_comercial": comercial.uso_comercial, "uso_comercial_nota": comercial.nota,
+                "padrao": padrao.as_deref() == Some(x.id.as_str()), "licenca": comercial.licenca, "arquivo": x.arquivo,
                 "encaixe": plano.encaixe, "rotulo": plano.encaixe.rotulo(), "aviso": plano.aviso, "contexto": plano.contexto,
                 "memoria_placa_mb": plano.memoria_placa_mb, "memoria_ram_mb": plano.memoria_ram_mb,
                 "visao": x.mmproj.is_some(),
@@ -673,6 +834,9 @@ async fn modelos(State(m): M) -> Response {
             let mut v = serde_json::to_value(&c).unwrap_or(Value::Null);
             if let Value::Object(o) = &mut v {
                 o.insert("instalado".into(), json!(ids_instalados.contains(&c.id)));
+                let comercial = crate::licenca::do_catalogo(&c);
+                o.insert("uso_comercial".into(), json!(comercial.uso_comercial));
+                o.insert("uso_comercial_nota".into(), json!(comercial.nota));
                 o.insert("encaixe".into(), json!(plano.encaixe));
                 o.insert("rotulo".into(), json!(plano.encaixe.rotulo()));
                 o.insert("aviso".into(), json!(plano.aviso));
@@ -825,6 +989,50 @@ async fn parar(State(m): M, body: Bytes) -> Response {
     let b: PararBody = serde_json::from_slice(&body).unwrap_or_default();
     let id = b.id.and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())));
     ok(json!({"ok": true, "paradas": m.stop_requests(id)}))
+}
+
+/// `POST /motor/reservar {"mb": 12000, "minutos": 15}`: descarrega tudo e não carrega nada até a
+/// reserva acabar (para outro programa usar a placa, como o TRELLIS.2). `"minutos": 0` libera.
+async fn reservar(State(m): M, body: Bytes) -> Response {
+    let v: Value = if body.is_empty() {
+        json!({})
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(v) => v,
+            Err(_) => return err_response(400, "json_invalido", "O corpo do pedido precisa ser JSON válido."),
+        }
+    };
+    let mb = match v.get("mb") {
+        None | Some(Value::Null) => None,
+        Some(x) => match x.as_u64() {
+            Some(n) => Some(n),
+            None => return err_response(400, "invalid_request_error", "\"mb\" precisa ser um número inteiro de megabytes."),
+        },
+    };
+    let minutos = match v.get("minutos") {
+        None | Some(Value::Null) => 15,
+        Some(x) => match x.as_u64() {
+            Some(n) => n,
+            None => return err_response(400, "invalid_request_error", "\"minutos\" precisa ser um número inteiro."),
+        },
+    };
+    if minutos == 0 {
+        let liberou = m.liberar_reserva();
+        return ok(json!({"ok": true, "liberada": liberou, "reserva": m.reserva_json()}));
+    }
+    match m.reservar(mb, minutos).await {
+        Ok(v) => ok(v),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn reserva_estado(State(m): M) -> Response {
+    ok(m.reserva_json())
+}
+
+async fn reserva_liberar(State(m): M) -> Response {
+    let liberou = m.liberar_reserva();
+    ok(json!({"ok": true, "liberada": liberou, "reserva": m.reserva_json()}))
 }
 
 async fn pausar(State(m): M) -> Response {
@@ -991,6 +1199,8 @@ async fn hf_repo(State(m): M, q: Q) -> Response {
         .collect();
     ok(json!({
         "repo": r.repo, "revisao": r.revisao, "pede_aceite": r.pede_aceite, "licenca": r.licenca,
+        "uso_comercial": crate::licenca::classificar(r.licenca.as_deref()).uso_comercial,
+        "uso_comercial_nota": crate::licenca::classificar(r.licenca.as_deref()).nota,
         "arquivos": arquivos, "mmproj": r.mmproj, "conta": m.hf_conta(), "recursos": rec,
         "pagina": format!("https://huggingface.co/{}", r.repo),
     }))

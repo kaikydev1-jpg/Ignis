@@ -52,8 +52,10 @@ impl InstalledModel {
 
     pub fn shape(&self) -> ModelShape {
         let i = self.info.clone().unwrap_or_default();
+        let visao = self.mmproj.as_ref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len()).unwrap_or(0);
         ModelShape {
-            tamanho_arquivo: self.tamanho,
+            // o arquivo de visão (mmproj) também vai para a memória
+            tamanho_arquivo: self.tamanho + visao,
             camadas: i.camadas,
             kv_bytes_por_token: i.kv_bytes_por_token(),
             contexto_max: i.contexto_treino,

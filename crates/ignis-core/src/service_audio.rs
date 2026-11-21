@@ -59,10 +59,7 @@ fn nome_backend(b: Backend) -> &'static str {
 
 impl Motor {
     fn audio_slot(&self, f: Familia) -> &tokio::sync::Mutex<Option<AudioRodando>> {
-        match f {
-            Familia::Voz => &self.audio_voz,
-            Familia::Transcricao => &self.audio_transcricao,
-        }
+        &self.audio_slots[f.indice()]
     }
 
     pub fn audio_manifest(&self) -> &audio::ManifestoAudio {
@@ -210,6 +207,8 @@ impl Motor {
                     let pronto = match f {
                         Familia::Voz => "Voz pronta: o Ignis já fala e clona vozes.",
                         Familia::Transcricao => "Transcrição pronta: o Ignis já transcreve áudio.",
+                        Familia::VozComercial => "Voz comercial pronta: o Chatterbox já fala (licença MIT, pode usar em produto pago).",
+                        Familia::Imagem => "Geração de imagem pronta: o Ignis já cria imagens.",
                     };
                     me.aviso("info", pronto);
                 }
@@ -232,6 +231,9 @@ impl Motor {
     pub async fn garantir_audio(self: &Arc<Self>, f: Familia) -> Result<AudioInfo, MotorError> {
         if self.is_paused() {
             return Err(MotorError::Pausado);
+        }
+        if let Some(r) = self.reserva_ativa() {
+            return Err(super::reservada_erro(&r));
         }
         let mut slot = self.audio_slot(f).lock().await;
         if let Some(r) = slot.as_mut() {
@@ -257,11 +259,23 @@ impl Motor {
         if motores.is_empty() {
             return Err(nao_preparado());
         }
+        // a imagem precisa de quase toda a placa: tira os modelos de conversa parados
+        if f == Familia::Imagem
+            && motores.iter().any(|(m, _)| m.backend != Backend::Cpu)
+            && self.ativos() == 0
+            && !self.carregados().is_empty()
+        {
+            self.unload().await;
+            self.aviso("info", "Modelos de conversa descarregados para gerar a imagem na placa; eles voltam no próximo pedido.");
+        }
         let mut erros = Vec::new();
         for (i, (mo, exe)) in motores.iter().enumerate() {
+            let arq = |i: usize| arquivos.get(i).unwrap_or(&arquivos[0]);
             let args = match f {
-                Familia::Voz => audio::args_voz(&arquivos[0], arquivos.get(1).unwrap_or(&arquivos[0])),
+                Familia::Voz => audio::args_voz(&arquivos[0], arq(1)),
                 Familia::Transcricao => audio::args_transcricao(&arquivos[0]),
+                Familia::VozComercial => audio::args_voz_comercial(&arquivos[0], arq(1), mo.backend != Backend::Cpu),
+                Familia::Imagem => audio::args_imagem(&arquivos[0], arq(1), arq(2), mo.backend != Backend::Cpu),
             };
             let spec = supervisor::LaunchSpec {
                 exe: exe.clone(),
@@ -277,6 +291,7 @@ impl Motor {
                 args_proprios: Some(args),
                 cache_kv: crate::budget::CacheKv::F16,
                 atencao_rapida: None,
+                rota_saude: Some(f.rota_saude().into()),
             };
             let t0 = Instant::now();
             match supervisor::start(&spec, &self.local, self.load_timeout).await {

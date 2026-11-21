@@ -1072,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "fake-llama-server"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "axum",
  "bytes",
@@ -1894,7 +1894,7 @@ dependencies = [
 
 [[package]]
 name = "ignis-app"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "axum",
  "gtk",
@@ -1914,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "ignis-cli"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "ignis-core",
  "serde_json",
@@ -1924,7 +1924,7 @@ dependencies = [
 
 [[package]]
 name = "ignis-core"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1949,6 +1949,7 @@ dependencies = [
  "tokio-util",
  "tower",
  "tracing",
+ "unicode-normalization",
  "webpki-root-certs",
  "windows 0.61.3",
  "winreg 0.55.0",
@@ -4836,6 +4837,15 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "unicode-segmentation"

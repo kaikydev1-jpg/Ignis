@@ -43,6 +43,9 @@ pub struct LaunchSpec {
     /// Atenção rápida (flash attention): None = automático (o llama.cpp liga onde funciona).
     #[serde(default)]
     pub atencao_rapida: Option<bool>,
+    /// Rota que responde 200 quando o servidor está pronto (padrão: `/health`).
+    #[serde(default)]
+    pub rota_saude: Option<String>,
 }
 
 impl LaunchSpec {
@@ -379,7 +382,8 @@ async fn start_once(spec: &LaunchSpec, client: &reqwest::Client, timeout: Durati
             let _ = child.wait().await;
             return Err(StartError::Timeout { log: tail(&log, 80) });
         }
-        if let Ok(r) = client.get(format!("{base_url}/health")).timeout(Duration::from_secs(2)).send().await {
+        let saude = spec.rota_saude.as_deref().unwrap_or("/health");
+        if let Ok(r) = client.get(format!("{base_url}{saude}")).timeout(Duration::from_secs(2)).send().await {
             if r.status().is_success() {
                 tracing::info!("motor pronto em {:.1}s", started.elapsed().as_secs_f32());
                 // as últimas linhas do início podem chegar logo depois do /health
@@ -439,6 +443,7 @@ mod tests {
             args_proprios: None,
             cache_kv: crate::budget::CacheKv::F16,
             atencao_rapida: None,
+            rota_saude: None,
         };
         let a = s.args(5555);
         assert!(a.windows(2).any(|w| w == ["--host", "127.0.0.1"]));

@@ -80,5 +80,6 @@ jobs:
         env:
           IGNIS_TEST_ENGINE_ARCHIVE: ${{ github.workspace }}/testes-dados/${{ matrix.pacote }}
           IGNIS_TEST_MODEL: ${{ github.workspace }}/testes-dados/modelo.gguf
+          IGNIS_TEST_VOZ_COMERCIAL: "1"
           RUST_BACKTRACE: "1"
         run: cargo test --workspace --no-fail-fast -- --nocapture

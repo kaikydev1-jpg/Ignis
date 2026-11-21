@@ -27,6 +27,10 @@ use ignis_core::paths::Paths;
 use ignis_core::service::{Motor, MotorOptions};
 use serde_json::{json, Value};
 
+/// Os testes reais disputam o processador (o Chatterbox usa todos os núcleos e o teste de
+/// velocidade do llama-server tem limite de 30 s), então rodam um de cada vez.
+static UM_POR_VEZ: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn env_path(k: &str) -> Option<PathBuf> {
     std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_file())
 }
@@ -72,6 +76,7 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
         eprintln!("pulando: defina IGNIS_TEST_ENGINE_ARCHIVE e IGNIS_TEST_MODEL");
         return;
     };
+    let _vez = UM_POR_VEZ.lock().await;
     let base_url = servir_arquivo(pacote.clone()).await;
     let mut manifest = EngineManifest::embedded();
     manifest.url_base = base_url; // servidor local de teste no lugar do GitHub
@@ -137,6 +142,65 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
     eprintln!("resposta ({:.1}s): {texto:?}", t0.elapsed().as_secs_f32());
     assert!(!texto.is_empty());
     assert_eq!(motor.loaded_info().unwrap().backend, Backend::Cpu);
+
+    // saída estruturada (pedido da Fornalha): response_format com json_schema passa direto ao
+    // llama-server, que obriga a resposta a seguir o esquema (gramática)
+    let esquema = json!({
+        "type": "object",
+        "properties": {
+            "nome": {"type": "string"},
+            "versao": {"type": "integer"},
+            "cenas": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 3},
+            "publicado": {"type": "boolean"}
+        },
+        "required": ["nome", "versao", "cenas", "publicado"],
+        "additionalProperties": false
+    });
+    for stream in [false, true] {
+        let r = c
+            .post(format!("{base}/v1/chat/completions"))
+            .json(&json!({
+                "model": id, "temperature": 0, "max_tokens": 200, "stream": stream,
+                "messages": [{"role": "user", "content": "Crie o game.project.json de um jogo de plataforma chamado Fogo."}],
+                "response_format": {"type": "json_schema", "json_schema": {"name": "game_project", "strict": true, "schema": esquema}}
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status().as_u16(), 200);
+        let texto = if stream {
+            let corpo = r.text().await.unwrap();
+            corpo
+                .lines()
+                .filter_map(|l| l.strip_prefix("data: "))
+                .filter_map(|j| serde_json::from_str::<Value>(j).ok())
+                .filter_map(|v| v["choices"][0]["delta"]["content"].as_str().map(String::from))
+                .collect::<String>()
+        } else {
+            let v: Value = r.json().await.unwrap();
+            v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string()
+        };
+        eprintln!("json_schema (stream={stream}): {texto}");
+        let obj: Value = serde_json::from_str(texto.trim()).unwrap_or_else(|e| panic!("não é JSON válido ({e}): {texto}"));
+        let o = obj.as_object().unwrap();
+        assert!(o["nome"].is_string() && o["versao"].is_i64() && o["publicado"].is_boolean(), "{obj}");
+        let cenas = o["cenas"].as_array().unwrap();
+        assert!((1..=3).contains(&cenas.len()) && cenas.iter().all(|x| x.is_string()), "{obj}");
+        let mut chaves: Vec<&String> = o.keys().collect();
+        chaves.sort();
+        assert_eq!(chaves, ["cenas", "nome", "publicado", "versao"], "nada além do esquema");
+    }
+    // e o modo JSON simples
+    let r = c
+        .post(format!("{base}/v1/chat/completions"))
+        .json(&json!({"model": id, "temperature": 0, "max_tokens": 60, "response_format": {"type": "json_object"},
+                      "messages": [{"role": "user", "content": "Dê um objeto JSON com a cor do fogo."}]}))
+        .send()
+        .await
+        .unwrap();
+    let v: Value = r.json().await.unwrap();
+    let texto = v["choices"][0]["message"]["content"].as_str().unwrap_or("");
+    assert!(serde_json::from_str::<Value>(texto.trim()).map(|x| x.is_object()).unwrap_or(false), "json_object: {texto}");
 
     // conversa com streaming
     let resp = c
@@ -215,5 +279,79 @@ async fn llama_server_oficial_de_ponta_a_ponta() {
     assert!(t.resultados[0].ok, "{:?}", t.resultados[0].erro);
     assert!(t.resultados[0].geracao_tps.unwrap() > 0.0);
 
+    motor.shutdown_all().await;
+}
+
+/// Voz comercial DE VERDADE pelo Ignis: baixa o motor da release `motores-audio-2`
+/// (GitHub) e o Chatterbox Multilingual (Hugging Face) pelo manifesto embutido,
+/// confere os SHA-256, sobe o `tts-server` do codec.cpp no processador e fala em
+/// português por `/v1/audio/speech` com `"model": "chatterbox"`.
+/// Roda com `IGNIS_TEST_VOZ_COMERCIAL=1` (baixa ~870 MB).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn voz_comercial_de_verdade_pelo_ignis() {
+    if std::env::var("IGNIS_TEST_VOZ_COMERCIAL").as_deref() != Ok("1") {
+        eprintln!("pulando: defina IGNIS_TEST_VOZ_COMERCIAL=1");
+        return;
+    }
+    let _vez = UM_POR_VEZ.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths::under(tmp.path());
+    paths.ensure().unwrap();
+    std::fs::write(paths.config_file(), serde_json::to_vec(&json!({"primeira_execucao_feita": true, "porta": free_port()})).unwrap())
+        .unwrap();
+    let motor = Motor::new(
+        paths.clone(),
+        MotorOptions {
+            detection_override: Some(sem_placa()),
+            tick: Duration::from_millis(200),
+            launcher: None,
+            load_timeout: Duration::from_secs(300),
+            catalog_override: None,
+            manifest_override: None,
+            auto_teste: false,
+            extras_motor: None,
+            pastas_locais: Some(Default::default()),
+            audio_manifest_override: None,
+            instalacao_override: None,
+        },
+    );
+    motor.start_background();
+    motor.detect_now().await;
+    let base = subir_api(&motor).await;
+    let c = cliente();
+
+    let t0 = Instant::now();
+    let r = c.post(format!("{base}/motor/audio/preparar")).json(&json!({"familias": ["voz-comercial"]})).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200, "{}", r.text().await.unwrap_or_default());
+    let mut plano = Value::Null;
+    while t0.elapsed() < Duration::from_secs(1200) {
+        plano = c.get(format!("{base}/motor/audio")).send().await.unwrap().json().await.unwrap();
+        if plano["voz-comercial"]["preparado"] == json!(true) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    assert_eq!(plano["voz-comercial"]["preparado"], json!(true), "não preparou: {plano} / {}", avisos_texto(&motor));
+    eprintln!("voz comercial preparada em {:.0}s", t0.elapsed().as_secs_f32());
+
+    let t0 = Instant::now();
+    let r = c
+        .post(format!("{base}/v1/audio/speech"))
+        .json(&json!({"model": "chatterbox", "input": "Olá! Esta é a voz comercial do Ignis.", "language": "Portuguese", "response_format": "wav", "seed": 42}))
+        .timeout(Duration::from_secs(600))
+        .send()
+        .await
+        .unwrap();
+    let status = r.status().as_u16();
+    let audio = r.bytes().await.unwrap();
+    assert_eq!(status, 200, "{} / {}", String::from_utf8_lossy(&audio[..audio.len().min(500)]), avisos_texto(&motor));
+    eprintln!("fala gerada em {:.0}s: {} bytes", t0.elapsed().as_secs_f32(), audio.len());
+    assert_eq!(&audio[..4], b"RIFF");
+    assert!(audio.len() > 20_000, "fala curta demais: {} bytes", audio.len());
+    let estado: Value = c.get(format!("{base}/motor/audio")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(estado["voz-comercial"]["rodando"]["backend"], "cpu", "{estado}");
+    if let Some(dir) = std::env::var_os("IGNIS_TEST_SAIDA") {
+        let _ = std::fs::write(PathBuf::from(dir).join("voz-comercial-pelo-ignis.wav"), &audio);
+    }
     motor.shutdown_all().await;
 }

@@ -1,11 +1,19 @@
 name: Motores de áudio
 
-# Compila os motores de voz (omnivoice.cpp, tts-server) e de transcrição
-# (whisper.cpp, whisper-server) a partir de versões fixadas, para Windows e
-# Linux, nas versões Vulkan (AMD, Intel e NVIDIA) e processador. Testa de
-# verdade no processador: gera uma voz e transcreve de volta.
-# GERAR NÃO É PUBLICAR: os binários só viram release ("motores-audio-N",
-# pré-lançamento, nunca a "latest" do app) com "publicar = sim".
+# Release "motores-audio-N" com os motores que o Ignis baixa para voz, transcrição,
+# voz comercial e geração de imagem, para Windows e Linux, nas versões Vulkan
+# (AMD, Intel e NVIDIA) e processador.
+#
+# - Voz (omnivoice.cpp) e transcrição (whisper.cpp): os MESMOS arquivos da
+#   release motores-audio-1 (já testados), copiados sem recompilar.
+# - Voz comercial (codec.cpp, tts-server, Chatterbox Multilingual) e imagem
+#   (stable-diffusion.cpp, sd-server, Z-Image Turbo): compilados aqui a partir
+#   de versões fixadas.
+#
+# Testa de verdade no processador: a voz comercial fala em português e o
+# whisper transcreve de volta; o sd-server gera uma imagem pequena.
+# GERAR NÃO É PUBLICAR: os binários só viram release (pré-lançamento, nunca a
+# "latest" do app) com "publicar = sim".
 
 on:
   workflow_dispatch:
@@ -25,17 +33,17 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OMNIVOICE_REPO: https://github.com/ServeurpersoCom/omnivoice.cpp
-  OMNIVOICE_COMMIT: a5bd24f6b675335d1c9c0e945793d0de9fabe9a4
-  WHISPER_REPO: https://github.com/ggml-org/whisper.cpp
-  WHISPER_TAG: v1.9.5
-  WHISPER_COMMIT: d1be6fde11ac6e0407606b4e42fe72d34add8037
-  TAG_MOTORES: motores-audio-1
+  CODEC_REPO: https://github.com/mybigday/codec.cpp
+  CODEC_COMMIT: d5e385229ea5a0f48fff696fed4699a852aa43b7
+  SD_REPO: https://github.com/leejet/stable-diffusion.cpp
+  SD_COMMIT: 532d2c15c430a785a712b2d94281f04e733008a4
+  TAG_ANTERIOR: motores-audio-1
+  TAG_MOTORES: motores-audio-2
   # binário portátil: sem -march=native; AVX2 (processadores de 2013 em diante); sem OpenMP
   CMAKE_COMUM: >-
-    -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+    -G Ninja -DCMAKE_BUILD_TYPE=Release
     -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON
-    -DGGML_OPENMP=OFF -DGGML_BLAS=OFF
+    -DGGML_AVX512=OFF -DGGML_OPENMP=OFF -DGGML_BLAS=OFF
 
 jobs:
   compilar:
@@ -49,7 +57,7 @@ jobs:
           - { so: windows, runner: windows-latest, backend: cpu }
           - { so: windows, runner: windows-latest, backend: vulkan }
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -88,44 +96,104 @@ jobs:
           Add-Content $env:GITHUB_PATH "$sdk\Bin"
           & "$sdk\Bin\glslc.exe" --version | Select-Object -First 1
 
+      # o codec.cpp junta o llama.cpp numa biblioteca à parte (libttsbackbone) com opções
+      # do ligador GNU (--whole-archive): no Windows ele é compilado com o gcc do MSYS2
+      - name: MSYS2 (Windows, para o codec.cpp)
+        if: matrix.so == 'windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+            ${{ matrix.backend == 'vulkan' && 'mingw-w64-ucrt-x86_64-vulkan-devel mingw-w64-ucrt-x86_64-shaderc mingw-w64-ucrt-x86_64-spirv-headers' || '' }}
+
       - name: Baixar os fontes (versões fixadas)
         run: |
-          git clone --recurse-submodules "$OMNIVOICE_REPO" omnivoice
-          git -C omnivoice checkout "$OMNIVOICE_COMMIT"
-          git -C omnivoice submodule update --init --recursive
-          git clone --depth 1 --branch "$WHISPER_TAG" "$WHISPER_REPO" whisper
-          test "$(git -C whisper rev-parse HEAD)" = "$WHISPER_COMMIT"
+          git clone "$CODEC_REPO" codec
+          git -C codec checkout "$CODEC_COMMIT"
+          git -C codec submodule update --init --recursive --depth 1
+          git clone "$SD_REPO" sd
+          git -C sd checkout "$SD_COMMIT"
+          git -C sd submodule update --init --depth 1 ggml thirdparty/libwebp thirdparty/libwebm
 
-      - name: Compilar
+      - name: Ajuste do codec.cpp para o Windows (exporta tudo da libttsbackbone)
+        if: matrix.so == 'windows'
         run: |
-          EXTRA=""
-          [ "${{ matrix.backend }}" = vulkan ] && EXTRA="-DGGML_VULKAN=ON"
+          PY=$(command -v python3 || command -v python)
+          "$PY" - <<'EOF'
+          p = 'codec/cmake/ttsbackbone/CMakeLists.txt'
+          s = open(p, encoding='utf-8').read()
+          antes = 'else()\n    target_link_options(ttsbackbone PRIVATE\n        "LINKER:--whole-archive"'
+          assert antes in s, 'trecho do ttsbackbone mudou'
+          s = s.replace('LIBRARY_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}")', 'LIBRARY_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}"\n    RUNTIME_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}"\n    ARCHIVE_OUTPUT_DIRECTORY "${TTSBACKBONE_OUTPUT_DIR}")', 1)
+          s = s.replace(antes, 'elseif(WIN32)\n    target_link_options(ttsbackbone PRIVATE\n        "LINKER:--whole-archive" "$<TARGET_FILE:llama>" "$<TARGET_FILE:llama-common>" "LINKER:--no-whole-archive" "LINKER:--export-all-symbols")\n' + antes, 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          # o httplib do tts-server usa os sockets do Windows
+          with open('codec/CMakeLists.txt', 'a', encoding='utf-8') as f:
+              f.write('\nif(WIN32 AND TARGET tts-server)\n    target_link_libraries(tts-server PRIVATE ws2_32)\nendif()\n')
+          EOF
+          grep -n -A3 "elseif(WIN32)" codec/cmake/ttsbackbone/CMakeLists.txt
+
+      - name: Compilar a voz comercial (codec.cpp, tts-server) no Linux
+        if: matrix.so == 'linux'
+        run: |
+          EXTRA=""; [ "${{ matrix.backend }}" = vulkan ] && EXTRA="-DGGML_VULKAN=ON"
+          cmake -S codec -B codec/build $CMAKE_COMUM $EXTRA -DCODEC_BUILD_TTS_CLI=ON -DCODEC_TTS_BACKBONE=ON -DCODEC_TTS_SERVER=ON
+          cmake --build codec/build --target tts-server -j 4
+
+      - name: Compilar a voz comercial (codec.cpp, tts-server) no Windows
+        if: matrix.so == 'windows'
+        shell: msys2 {0}
+        run: |
+          unset VULKAN_SDK
+          EXTRA=""; [ "${{ matrix.backend }}" = vulkan ] && EXTRA="-DGGML_VULKAN=ON"
+          cmake -S codec -B codec/build $CMAKE_COMUM $EXTRA -DCODEC_BUILD_TTS_CLI=ON -DCODEC_TTS_BACKBONE=ON -DCODEC_TTS_SERVER=ON \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build codec/build --target tts-server -j 4
+
+      - name: Compilar a imagem (stable-diffusion.cpp, sd-server)
+        run: |
+          EXTRA=""; [ "${{ matrix.backend }}" = vulkan ] && EXTRA="-DSD_VULKAN=ON"
           LINK=""
           [ "${{ matrix.so }}" = linux ] && LINK="-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc"
-          cmake -S omnivoice -B omnivoice/build $CMAKE_COMUM $EXTRA ${LINK:+"$LINK"}
-          cmake --build omnivoice/build --target tts-server -j 4
-          cmake -S whisper -B whisper/build $CMAKE_COMUM $EXTRA ${LINK:+"$LINK"} \
-            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_SERVER=ON -DWHISPER_SDL2=OFF -DWHISPER_CURL=OFF
-          cmake --build whisper/build --target whisper-server -j 4
+          cmake -S sd -B sd/build $CMAKE_COMUM $EXTRA ${LINK:+"$LINK"} -DSD_BUILD_SHARED_LIBS=OFF -DSD_SERVER_BUILD_FRONTEND=OFF
+          cmake --build sd/build --target sd-server -j 4
 
       - name: Empacotar
         run: |
           EXE=""; [ "${{ matrix.so }}" = windows ] && EXE=".exe"
-          V="ignis-voz-${{ matrix.so }}-${{ matrix.backend }}"
-          T="ignis-transcricao-${{ matrix.so }}-${{ matrix.backend }}"
-          mkdir -p pacotes "$V" "$T"
-          cp "$(find omnivoice/build -name "tts-server$EXE" -type f | head -1)" "$V/"
-          cp omnivoice/LICENSE "$V/LICENSE-omnivoice.cpp.txt"
-          cp omnivoice/ggml/LICENSE "$V/LICENSE-ggml.txt" 2>/dev/null || true
-          cp "$(find whisper/build -name "whisper-server$EXE" -type f | head -1)" "$T/"
-          cp whisper/LICENSE "$T/LICENSE-whisper.cpp.txt"
+          V="ignis-voz-comercial-${{ matrix.so }}-${{ matrix.backend }}"
+          I="ignis-imagem-${{ matrix.so }}-${{ matrix.backend }}"
+          mkdir -p pacotes "$V" "$I"
+          cp "$(find codec/build -name "tts-server$EXE" -type f | head -1)" "$V/"
+          if [ "${{ matrix.so }}" = windows ]; then
+            find codec/build -name "*.dll" -type f -exec cp {} "$V/" \;
+            # bibliotecas do gcc (MSYS2) que o tts-server e a libttsbackbone usam
+            B="$(cygpath -u '${{ steps.msys2.outputs.msys2-location }}')/ucrt64/bin"
+            for d in libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll libgomp-1.dll; do
+              if [ -f "$B/$d" ]; then cp "$B/$d" "$V/"; fi
+            done
+          else
+            find codec/build -name "*.so*" \( -type f -o -type l \) -exec cp -L {} "$V/" \;
+          fi
+          cp codec/LICENSE "$V/LICENSE-codec.cpp.txt"
+          cp codec/ggml/LICENSE "$V/LICENSE-ggml.txt" 2>/dev/null || true
+          cp codec/common/third-party/llama.cpp/LICENSE "$V/LICENSE-llama.cpp.txt" 2>/dev/null || true
+          cp "$(find sd/build -name "sd-server$EXE" -type f | head -1)" "$I/"
+          [ "${{ matrix.so }}" = windows ] && find sd/build -name "*.dll" -type f -exec cp {} "$I/" \;
+          cp sd/LICENSE "$I/LICENSE-stable-diffusion.cpp.txt"
+          cp sd/ggml/LICENSE "$I/LICENSE-ggml.txt" 2>/dev/null || true
+          ls -la "$V" "$I"
           if [ "${{ matrix.so }}" = windows ]; then
             7z a "pacotes/$V.zip" "./$V/*" >/dev/null
-            7z a "pacotes/$T.zip" "./$T/*" >/dev/null
+            7z a "pacotes/$I.zip" "./$I/*" >/dev/null
           else
-            ldd "$V/tts-server" | sed 's/^/  /'
+            LD_LIBRARY_PATH="$V" ldd "$V/tts-server" | sed 's/^/  /'
+            ldd "$I/sd-server" | sed 's/^/  /'
             tar -czf "pacotes/$V.tar.gz" -C "$V" .
-            tar -czf "pacotes/$T.tar.gz" -C "$T" .
+            tar -czf "pacotes/$I.tar.gz" -C "$I" .
           fi
           ls -la pacotes
       - uses: actions/upload-artifact@v4
@@ -144,67 +212,96 @@ jobs:
           - { so: linux, runner: ubuntu-22.04 }
           - { so: windows, runner: windows-latest }
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
     env:
       HF: https://huggingface.co
-      VOZ_REV: 017094167b5c9ed565a5076ac9b3b93c5ecf5c73
+      CBX_REV: fe6b7d973a511d869b2a11ccd1d06d3d2483f0b3
       WHISPER_REV: 5359861c739e955e79d9a303bcbc70fb988958b1
+      ZIMG_REV: c61c0e422dc8b541b7548cf33a4ef8302b0f8085
+      QWEN_REV: a06e946bb6b655725eafa393f4a9745d460374c9
+      VAE_REV: 6fc90a3b1b653e935a0d175e260736de25b84df5
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: motores-audio-${{ matrix.so }}-cpu
           path: pacotes
-      - name: Extrair
+      - name: Extrair (e o whisper já publicado em motores-audio-1)
         run: |
-          mkdir voz transcricao
+          mkdir voz transcricao imagem
+          URL="https://github.com/${{ github.repository }}/releases/download/$TAG_ANTERIOR"
           if [ "${{ matrix.so }}" = windows ]; then
-            7z x pacotes/ignis-voz-windows-cpu.zip -ovoz >/dev/null
-            7z x pacotes/ignis-transcricao-windows-cpu.zip -otranscricao >/dev/null
+            7z x pacotes/ignis-voz-comercial-windows-cpu.zip -ovoz >/dev/null
+            7z x pacotes/ignis-imagem-windows-cpu.zip -oimagem >/dev/null
+            curl -fsSL --retry 3 -o t.zip "$URL/ignis-transcricao-windows-cpu.zip"
+            7z x t.zip -otranscricao >/dev/null
           else
-            tar -xzf pacotes/ignis-voz-linux-cpu.tar.gz -C voz
-            tar -xzf pacotes/ignis-transcricao-linux-cpu.tar.gz -C transcricao
+            tar -xzf pacotes/ignis-voz-comercial-linux-cpu.tar.gz -C voz
+            tar -xzf pacotes/ignis-imagem-linux-cpu.tar.gz -C imagem
+            curl -fsSL --retry 3 -o t.tar.gz "$URL/ignis-transcricao-linux-cpu.tar.gz"
+            tar -xzf t.tar.gz -C transcricao
           fi
-          ls -la voz transcricao
+          ls -la voz transcricao imagem
       - name: Modelos (conferidos por SHA-256)
         run: |
           baixa() { curl -fsSL --retry 3 -o "$2" "$1"; echo "$3  $2" | sha256sum -c -; }
-          baixa "$HF/Serveurperso/OmniVoice-GGUF/resolve/$VOZ_REV/omnivoice-base-Q4_K_M.gguf" base.gguf 4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6
-          baixa "$HF/Serveurperso/OmniVoice-GGUF/resolve/$VOZ_REV/omnivoice-tokenizer-Q4_K_M.gguf" tokenizer.gguf 988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d
+          baixa "$HF/BricksDisplay/Chatterbox-Multilingual-TTS-GGUF/resolve/$CBX_REV/chatterbox-mtl-q8_0.gguf" mtl.gguf ee9dc99058b8404acb66d6a7e77fef9ffaa2ff49f75e5881ebfdd8a76afa1ea0
+          baixa "$HF/BricksDisplay/Chatterbox-Multilingual-TTS-GGUF/resolve/$CBX_REV/codec-q8_0.gguf" codec.gguf b69fb014fd02275f65df6b06106efa1799880709dcc24f190e98b9ea60ee706a
           baixa "$HF/ggerganov/whisper.cpp/resolve/$WHISPER_REV/ggml-base-q5_1.bin" whisper.bin 422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898
-      - name: Gerar uma voz e transcrever de volta
+          baixa "$HF/leejet/Z-Image-Turbo-GGUF/resolve/$ZIMG_REV/z_image_turbo-Q3_K.gguf" difusao.gguf 4b44bdaa7814f20d7cf144e3939bd93aa32f50660204dd0c2aea5c5376232980
+          baixa "$HF/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/$QWEN_REV/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" texto.gguf 3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597
+          baixa "$HF/Comfy-Org/z_image_turbo/resolve/$VAE_REV/split_files/vae/ae.safetensors" vae.safetensors afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38
+      - name: Voz comercial em português e transcrição de volta
         run: |
           EXE=""; [ "${{ matrix.so }}" = windows ] && EXE=".exe"
-          espera() { for i in $(seq 1 180); do curl -sf "http://127.0.0.1:$1/health" >/dev/null && return 0; sleep 1; done; return 1; }
-          ./voz/tts-server$EXE --model base.gguf --codec tokenizer.gguf --host 127.0.0.1 --port 18700 > voz.log 2>&1 &
-          espera 18700 || { cat voz.log; exit 1; }
+          espera() { for i in $(seq 1 300); do curl -sf "http://127.0.0.1:$1$2" >/dev/null && return 0; sleep 1; done; return 1; }
+          # o mesmo que o Ignis faz (LD_LIBRARY_PATH na pasta do motor; amostragem de referência)
+          LD_LIBRARY_PATH="$PWD/voz" ./voz/tts-server$EXE --backbone mtl.gguf --model codec.gguf --host 127.0.0.1 --port 18720 \
+            --n-threads 4 --model-id chatterbox --temp 0.8 --top-k 0 --top-p 1.0 --min-p 0.05 --repeat-penalty 1.2 \
+            --repeat-last-n 1024 --samplers "penalties;temperature;min_p;top_p" > voz.log 2>&1 &
+          espera 18720 /health || { cat voz.log; exit 1; }
           PY=$(command -v python3 || command -v python)
-          # o texto vai num arquivo em UTF-8 (no Windows, a linha de comando pode trocar os acentos)
-          "$PY" -c "import json; open('pedido.json','w',encoding='utf-8').write(json.dumps({'input':'Olá! Este é um teste do motor de voz do Ignis.','language':'Portuguese','response_format':'wav','seed':42}, ensure_ascii=False))"
+          # texto como o Ignis manda: minúsculas, NFKD e "[pt]" na frente (em UTF-8 num arquivo)
+          "$PY" -c "import json,unicodedata; t='[pt]'+unicodedata.normalize('NFKD','Olá! Este é um teste do motor de voz do Ignis.'.lower()); open('pedido.json','w',encoding='utf-8').write(json.dumps({'model':'chatterbox','input':t,'response_format':'wav','seed':42}, ensure_ascii=False))"
           T0=$(date +%s)
-          CODIGO=$(curl -s -o fala.wav -w '%{http_code}' -X POST http://127.0.0.1:18700/v1/audio/speech -H 'Content-Type: application/json; charset=utf-8' --data-binary @pedido.json)
+          CODIGO=$(curl -s -o fala.wav -w '%{http_code}' -X POST http://127.0.0.1:18720/v1/audio/speech -H 'Content-Type: application/json; charset=utf-8' --data-binary @pedido.json)
           if [ "$CODIGO" != 200 ]; then echo "HTTP $CODIGO"; head -c 2000 fala.wav; echo; cat voz.log; exit 1; fi
           echo "voz gerada em $(( $(date +%s) - T0 )) s: $(wc -c < fala.wav) bytes"
           head -c 4 fala.wav | grep -q RIFF
           test "$(wc -c < fala.wav)" -gt 20000
-          # o Git Bash do Windows troca argumentos que começam com / por caminhos (C:/Program Files/Git/...)
           MSYS2_ARG_CONV_EXCL='*' ./transcricao/whisper-server$EXE -m whisper.bin --host 127.0.0.1 --port 18701 --inference-path /v1/audio/transcriptions > transcricao.log 2>&1 &
-          espera 18701 || { cat transcricao.log; exit 1; }
+          espera 18701 /health || { cat transcricao.log; exit 1; }
           CODIGO=$(curl -s -o texto.json -w '%{http_code}' http://127.0.0.1:18701/v1/audio/transcriptions -F "file=@fala.wav;type=audio/wav" -F response_format=verbose_json -F language=pt)
           if [ "$CODIGO" != 200 ]; then echo "HTTP $CODIGO"; head -c 2000 texto.json; echo; cat transcricao.log; exit 1; fi
           cat texto.json; echo
-          "$PY" -c "import json,sys; t=json.load(open('texto.json',encoding='utf-8'))['text'].lower(); print('transcrito:', t.encode('ascii','replace').decode()); sys.exit(0 if 'teste' in t or 'ignis' in t else 1)"
+          "$PY" -c "import json,sys; t=json.load(open('texto.json',encoding='utf-8'))['text'].lower(); print('transcrito:', t.encode('ascii','replace').decode()); sys.exit(0 if 'teste' in t or 'ignis' in t or 'motor' in t else 1)"
+      - name: Gerar uma imagem (Z-Image Turbo, 256x256, 4 passos)
+        run: |
+          EXE=""; [ "${{ matrix.so }}" = windows ] && EXE=".exe"
+          ./imagem/sd-server$EXE --diffusion-model difusao.gguf --llm texto.gguf --vae vae.safetensors \
+            --listen-ip 127.0.0.1 --listen-port 18730 --offload-to-cpu --vae-tiling --cfg-scale 1.0 --steps 8 -W 512 -H 512 -t 4 > imagem.log 2>&1 &
+          for i in $(seq 1 600); do curl -sf http://127.0.0.1:18730/v1/models >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:18730/v1/models || { cat imagem.log; exit 1; }
+          PY=$(command -v python3 || command -v python)
+          "$PY" -c "import json; open('pedido.json','w',encoding='utf-8').write(json.dumps({'prompt':'um gato laranja dormindo num sofá azul <sd_cpp_extra_args>{\"seed\":7,\"sample_params\":{\"sample_steps\":4}}</sd_cpp_extra_args>','n':1,'size':'256x256','output_format':'png'}, ensure_ascii=False))"
+          T0=$(date +%s)
+          CODIGO=$(curl -s -o imagem.json -w '%{http_code}' --max-time 3000 -X POST http://127.0.0.1:18730/v1/images/generations -H 'Content-Type: application/json; charset=utf-8' --data-binary @pedido.json)
+          if [ "$CODIGO" != 200 ]; then echo "HTTP $CODIGO"; head -c 2000 imagem.json; echo; tail -50 imagem.log; exit 1; fi
+          echo "imagem gerada em $(( $(date +%s) - T0 )) s"
+          "$PY" -c "import json,base64,sys; d=json.load(open('imagem.json'))['data'][0]['b64_json']; b=base64.b64decode(d); open('imagem.png','wb').write(b); print(len(b),'bytes'); sys.exit(0 if b[:4]==b'\x89PNG' and len(b)>5000 else 1)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: teste-audio-${{ matrix.so }}
+          name: teste-motores-${{ matrix.so }}
           path: |
             fala.wav
             texto.json
+            imagem.png
             voz.log
             transcricao.log
+            imagem.log
           retention-days: 30
 
   vulkan-software:
@@ -212,27 +309,28 @@ jobs:
     needs: compilar
     runs-on: ubuntu-22.04
     continue-on-error: true
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: motores-audio-linux-vulkan
           path: pacotes
-      - name: Rodar o motor de voz Vulkan num Vulkan de software
+      - name: Rodar a voz comercial Vulkan num Vulkan de software
         run: |
           ./scripts/apt-instalar.sh mesa-vulkan-drivers libvulkan1
-          mkdir voz && tar -xzf pacotes/ignis-voz-linux-vulkan.tar.gz -C voz
-          curl -fsSL --retry 3 -o base.gguf https://huggingface.co/Serveurperso/OmniVoice-GGUF/resolve/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/omnivoice-base-Q4_K_M.gguf
-          curl -fsSL --retry 3 -o tok.gguf https://huggingface.co/Serveurperso/OmniVoice-GGUF/resolve/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/omnivoice-tokenizer-Q4_K_M.gguf
-          ./voz/tts-server --model base.gguf --codec tok.gguf --host 127.0.0.1 --port 18710 > vk.log 2>&1 &
-          for i in $(seq 1 240); do curl -sf http://127.0.0.1:18710/health >/dev/null && break; sleep 1; done
-          curl -sf -X POST http://127.0.0.1:18710/v1/audio/speech -H 'Content-Type: application/json' \
-            -d '{"input":"Teste.","language":"Portuguese","response_format":"wav","seed":1}' -o vk.wav && ls -la vk.wav
+          mkdir voz && tar -xzf pacotes/ignis-voz-comercial-linux-vulkan.tar.gz -C voz
+          R=https://huggingface.co/BricksDisplay/Chatterbox-Multilingual-TTS-GGUF/resolve/fe6b7d973a511d869b2a11ccd1d06d3d2483f0b3
+          curl -fsSL --retry 3 -o mtl.gguf "$R/chatterbox-mtl-q8_0.gguf"
+          curl -fsSL --retry 3 -o codec.gguf "$R/codec-q8_0.gguf"
+          LD_LIBRARY_PATH="$PWD/voz" ./voz/tts-server --backbone mtl.gguf --model codec.gguf --host 127.0.0.1 --port 18740 --gpu > vk.log 2>&1 &
+          for i in $(seq 1 300); do curl -sf http://127.0.0.1:18740/health >/dev/null && break; sleep 1; done
+          curl -sf -X POST http://127.0.0.1:18740/v1/audio/speech -H 'Content-Type: application/json' \
+            -d '{"input":"[pt]teste.","response_format":"wav","seed":1}' -o vk.wav && ls -la vk.wav
           grep -i -E "vulkan|device|lavapipe|llvmpipe" vk.log | head -20 || true
 
   publicar:
-    name: Publicar os motores de áudio (só a pedido)
+    name: Publicar os motores (só a pedido)
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.publicar == 'sim'
     needs: [compilar, testar]
     runs-on: ubuntu-24.04
@@ -244,19 +342,28 @@ jobs:
           pattern: motores-audio-*
           path: pacotes
           merge-multiple: true
+      - name: Voz e transcrição da release anterior (os mesmos arquivos, sem recompilar)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG_ANTERIOR" -R "${{ github.repository }}" -D anteriores -p 'ignis-voz-windows-*' -p 'ignis-voz-linux-*' -p 'ignis-transcricao-*' -p SHA256SUMS.txt
+          (cd anteriores && grep -E 'ignis-(voz|transcricao)-(windows|linux)-(cpu|vulkan)\.' SHA256SUMS.txt | sha256sum -c -)
+          cp anteriores/ignis-voz-windows-* anteriores/ignis-voz-linux-* anteriores/ignis-transcricao-* pacotes/
       - name: Somas SHA-256
         run: cd pacotes && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt && ls -l
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_MOTORES }}
           target_commitish: ${{ github.sha }}
-          name: Motores de áudio do Ignis (${{ env.TAG_MOTORES }})
+          name: Motores de áudio e imagem do Ignis (${{ env.TAG_MOTORES }})
           prerelease: true
           make_latest: "false"
           overwrite_files: true
           body: |
-            Motores de voz e transcrição usados pelo Ignis (baixados por ele, conforme a placa). Não é o aplicativo: para instalar o Ignis, use a versão mais recente.
-            - Voz: omnivoice.cpp ${{ env.OMNIVOICE_COMMIT }} (tts-server), licença MIT.
-            - Transcrição: whisper.cpp ${{ env.WHISPER_TAG }} (whisper-server), licença MIT.
+            Motores usados pelo Ignis (baixados por ele, conforme a placa). Não é o aplicativo: para instalar o Ignis, use a versão mais recente.
+            - Voz: omnivoice.cpp (tts-server), licença MIT. Mesmos arquivos de ${{ env.TAG_ANTERIOR }}.
+            - Transcrição: whisper.cpp v1.9.5 (whisper-server), licença MIT. Mesmos arquivos de ${{ env.TAG_ANTERIOR }}.
+            - Voz comercial: codec.cpp ${{ env.CODEC_COMMIT }} (tts-server, Chatterbox Multilingual), licença MIT.
+            - Imagem: stable-diffusion.cpp ${{ env.SD_COMMIT }} (sd-server, Z-Image Turbo), licença MIT.
             - Versões: Vulkan (AMD, Intel e NVIDIA) e processador, para Windows e Linux. Conferência em SHA256SUMS.txt.
           files: pacotes/*

@@ -183,3 +183,133 @@ async fn voz_parada_descarrega_sozinha() {
     assert!(avisos_texto(m).contains("descarregado"));
     m.shutdown_all().await;
 }
+
+/// O que o servidor simulado da voz comercial recebeu (vem depois do áudio).
+fn pedido_recebido(audio: &[u8]) -> Value {
+    let marca = b"FAKE-PEDIDO";
+    let i = audio.windows(marca.len()).position(|w| w == marca).expect("marca do pedido no áudio") + marca.len();
+    serde_json::from_slice(&audio[i..]).unwrap()
+}
+
+/// Pedido 1 da Fornalha: `"model": "chatterbox"` usa o Chatterbox Multilingual (MIT),
+/// com o texto preparado como o modelo espera; sem `model`, continua o OmniVoice.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn voz_comercial_escolhida_pelo_campo_model() {
+    let amb = ambiente(Opcoes::default());
+    let m = &amb.motor;
+    m.start_background();
+    m.detect_now().await;
+    let so = ignis_core::engine::manifest::current_os();
+    instalar_audio(
+        m,
+        &[
+            (&format!("voz-{so}-vulkan"), voz("voz")),
+            (&format!("voz-{so}-cpu"), voz("voz")),
+            (&format!("voz-comercial-{so}-vulkan"), voz("voz-comercial")),
+            (&format!("voz-comercial-{so}-cpu"), voz("voz-comercial")),
+        ],
+    );
+    let base = subir_api(m).await;
+    let c = cliente();
+
+    let modelos: Value = c.get(format!("{base}/v1/models")).send().await.unwrap().json().await.unwrap();
+    let chatterbox = modelos["data"].as_array().unwrap().iter().find(|x| x["id"] == "chatterbox").cloned();
+    let chatterbox = chatterbox.unwrap_or_else(|| panic!("chatterbox em /v1/models: {modelos}"));
+    assert_eq!(chatterbox["ignis"]["uso_comercial"], "sim", "{chatterbox}");
+
+    let r = c
+        .post(format!("{base}/v1/audio/speech"))
+        .json(&json!({"model": "chatterbox", "input": "Olá, Mundo!", "language": "Portuguese", "voice": "ana", "response_format": "mp3"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    assert_eq!(r.headers()["content-type"], "audio/wav", "formato que o codec.cpp não tem vira wav");
+    let audio = r.bytes().await.unwrap();
+    assert_eq!(&audio[..4], b"RIFF");
+    let pedido = pedido_recebido(&audio);
+    assert_eq!(pedido["input"], "[pt]ola\u{301}, mundo!", "minúsculas, NFKD e o idioma na frente: {pedido}");
+    assert_eq!(pedido["model"], "chatterbox");
+    assert_eq!(pedido["response_format"], "wav");
+    assert!(pedido.get("language").is_none() && pedido.get("voice").is_none(), "{pedido}");
+
+    // inglês pelo código do idioma
+    let r = c
+        .post(format!("{base}/v1/audio/speech"))
+        .json(&json!({"model": "Chatterbox-Multilingual", "input": "Hi", "language": "en", "response_format": "pcm"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.headers()["content-type"], "audio/pcm");
+    assert_eq!(pedido_recebido(&r.bytes().await.unwrap())["input"], "[en]hi");
+
+    let estado: Value = c.get(format!("{base}/motor/audio")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(estado["voz-comercial"]["rodando"]["backend"], "vulkan", "{estado}");
+    assert!(estado["voz"]["rodando"].is_null(), "o OmniVoice não subiu: {estado}");
+
+    // sem "model": continua o OmniVoice
+    let r = c.post(format!("{base}/v1/audio/speech")).json(&json!({"input": "Oi", "response_format": "wav"})).send().await.unwrap();
+    assert_eq!(r.status().as_u16(), 200);
+    let audio = r.bytes().await.unwrap();
+    assert!(!audio.windows(11).any(|w| w == b"FAKE-PEDIDO"), "foi para o OmniVoice");
+}
+
+/// Pedido 2 da Fornalha: `/v1/images/generations` no formato da OpenAI, pelo sd-server.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn gerar_imagem_no_formato_da_openai() {
+    let amb = ambiente(Opcoes::default());
+    let m = &amb.motor;
+    m.start_background();
+    m.detect_now().await;
+    let so = ignis_core::engine::manifest::current_os();
+    instalar_audio(m, &[(&format!("imagem-{so}-vulkan"), voz("imagem")), (&format!("imagem-{so}-cpu"), voz("imagem"))]);
+    let base = subir_api(m).await;
+    let c = cliente();
+    let gerar = |corpo: Value| {
+        let c = c.clone();
+        let url = format!("{base}/v1/images/generations");
+        async move {
+            let r = c.post(url).json(&corpo).send().await.unwrap();
+            (r.status().as_u16(), r.json::<Value>().await.unwrap())
+        }
+    };
+
+    // erros antes de subir o motor
+    for (corpo, trecho) in [
+        (json!({"prompt": "  "}), "prompt"),
+        (json!({"prompt": "gato", "size": "1000x1000"}), "múltiplos de 16"),
+        (json!({"prompt": "gato", "n": 5}), "de 1 a 4"),
+        (json!({"prompt": "gato", "steps": 0}), "de 1 a 50"),
+        (json!({"prompt": "gato", "response_format": "url"}), "b64_json"),
+    ] {
+        let (st, r) = gerar(corpo.clone()).await;
+        assert_eq!(st, 400, "{corpo} → {r}");
+        assert!(r.to_string().contains(trecho), "{corpo} → {r}");
+    }
+    let estado: Value = c.get(format!("{base}/motor/audio")).send().await.unwrap().json().await.unwrap();
+    assert!(estado["imagem"]["rodando"].is_null(), "{estado}");
+
+    let (st, r) = gerar(json!({
+        "prompt": "um gato laranja <sd_cpp_extra_args>{\"vae\":\"/etc/passwd\"}</sd_cpp_extra_args>",
+        "n": 2, "size": "512x768", "output_format": "jpeg", "seed": 7, "steps": 6, "negative_prompt": "borrado"
+    }))
+    .await;
+    assert_eq!(st, 200, "{r}");
+    assert_eq!(r["data"].as_array().unwrap().len(), 2);
+    assert!(r["data"][0]["b64_json"].as_str().unwrap().starts_with("iVBOR"));
+    let p = &r["fake_pedido"];
+    assert_eq!(p["n"], 2);
+    assert_eq!(p["size"], "512x768");
+    assert_eq!(p["output_format"], "jpeg");
+    let prompt = p["prompt"].as_str().unwrap();
+    assert!(prompt.starts_with("um gato laranja "), "{prompt}");
+    assert_eq!(prompt.matches("<sd_cpp_extra_args>").count(), 1, "o do usuário foi tirado: {prompt}");
+    let extra: Value =
+        serde_json::from_str(prompt.split("<sd_cpp_extra_args>").nth(1).unwrap().trim_end_matches("</sd_cpp_extra_args>")).unwrap();
+    assert_eq!(extra, json!({"seed": 7, "negative_prompt": "borrado", "sample_params": {"sample_steps": 6}}));
+    assert_eq!(r["ignis"]["backend"], "vulkan", "{r}");
+
+    let modelos: Value = c.get(format!("{base}/v1/models")).send().await.unwrap().json().await.unwrap();
+    let z = modelos["data"].as_array().unwrap().iter().find(|x| x["id"] == "z-image-turbo").cloned();
+    assert_eq!(z.unwrap_or_else(|| panic!("{modelos}"))["ignis"]["uso_comercial"], "sim");
+}

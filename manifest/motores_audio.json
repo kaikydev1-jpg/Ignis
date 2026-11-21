@@ -1,10 +1,12 @@
 {
   "versao_manifesto": 1,
-  "versao": "motores-audio-1",
-  "url_base": "https://github.com/kaikydev1-jpg/Ignis/releases/download/motores-audio-1/",
+  "versao": "motores-audio-2",
+  "url_base": "https://github.com/kaikydev1-jpg/Ignis/releases/download/motores-audio-2/",
   "fontes": {
     "omnivoice.cpp": "https://github.com/ServeurpersoCom/omnivoice.cpp @ a5bd24f6b675335d1c9c0e945793d0de9fabe9a4",
-    "whisper.cpp": "https://github.com/ggml-org/whisper.cpp @ v1.9.5 (d1be6fde11ac6e0407606b4e42fe72d34add8037)"
+    "whisper.cpp": "https://github.com/ggml-org/whisper.cpp @ v1.9.5 (d1be6fde11ac6e0407606b4e42fe72d34add8037)",
+    "codec.cpp": "https://github.com/mybigday/codec.cpp @ d5e385229ea5a0f48fff696fed4699a852aa43b7",
+    "stable-diffusion.cpp": "https://github.com/leejet/stable-diffusion.cpp @ 532d2c15c430a785a712b2d94281f04e733008a4 (master-1106)"
   },
   "motores": [
     {
@@ -101,6 +103,102 @@
         "nome": "ignis-transcricao-linux-cpu.tar.gz",
         "sha256": "ce0d19c00ff64e6b0d6712c3c8115d169e8b971f3d2beb6ed8bfeac418873bca",
         "tamanho": 1899421
+      }
+    },
+    {
+      "id": "voz-comercial-windows-vulkan",
+      "familia": "voz-comercial",
+      "so": "windows",
+      "backend": "vulkan",
+      "executavel": "tts-server.exe",
+      "arquivo": {
+        "nome": "ignis-voz-comercial-windows-vulkan.zip",
+        "sha256": "7d4a3b7e541d5e32d3e2084d15b85b7b218b8530e61180680bbdbfc02d76a85d",
+        "tamanho": 34448399
+      }
+    },
+    {
+      "id": "voz-comercial-windows-cpu",
+      "familia": "voz-comercial",
+      "so": "windows",
+      "backend": "cpu",
+      "executavel": "tts-server.exe",
+      "arquivo": {
+        "nome": "ignis-voz-comercial-windows-cpu.zip",
+        "sha256": "ada0bf408546b861fc98f880faa99c5813decfb3f7cea1decaf7ffb0fa807f73",
+        "tamanho": 6733708
+      }
+    },
+    {
+      "id": "voz-comercial-linux-vulkan",
+      "familia": "voz-comercial",
+      "so": "linux",
+      "backend": "vulkan",
+      "executavel": "tts-server",
+      "arquivo": {
+        "nome": "ignis-voz-comercial-linux-vulkan.tar.gz",
+        "sha256": "a9c1e70234480540f90d7397754fb098a34afeb53d60bb58bf821aaf174c27e7",
+        "tamanho": 66013319
+      }
+    },
+    {
+      "id": "voz-comercial-linux-cpu",
+      "familia": "voz-comercial",
+      "so": "linux",
+      "backend": "cpu",
+      "executavel": "tts-server",
+      "arquivo": {
+        "nome": "ignis-voz-comercial-linux-cpu.tar.gz",
+        "sha256": "2c6c333a6043b34bb2f0586f0fdffc639e7c74009b26ef13f8c38c48146c3d21",
+        "tamanho": 7311134
+      }
+    },
+    {
+      "id": "imagem-windows-vulkan",
+      "familia": "imagem",
+      "so": "windows",
+      "backend": "vulkan",
+      "executavel": "sd-server.exe",
+      "arquivo": {
+        "nome": "ignis-imagem-windows-vulkan.zip",
+        "sha256": "8cedc3ea5ef955841fe8ca181135a53bdd6adc021a8307dd9457c356a6a58023",
+        "tamanho": 27202530
+      }
+    },
+    {
+      "id": "imagem-windows-cpu",
+      "familia": "imagem",
+      "so": "windows",
+      "backend": "cpu",
+      "executavel": "sd-server.exe",
+      "arquivo": {
+        "nome": "ignis-imagem-windows-cpu.zip",
+        "sha256": "4144553fcca10ebd1d41eaeb9d0a5d34203802084e7fa86629c4d1319a6578d6",
+        "tamanho": 14855778
+      }
+    },
+    {
+      "id": "imagem-linux-vulkan",
+      "familia": "imagem",
+      "so": "linux",
+      "backend": "vulkan",
+      "executavel": "sd-server",
+      "arquivo": {
+        "nome": "ignis-imagem-linux-vulkan.tar.gz",
+        "sha256": "ea31c3cd88dd0a0291d51a6406b7495a5e12df40d71dc751de0b44f5931461d2",
+        "tamanho": 32365332
+      }
+    },
+    {
+      "id": "imagem-linux-cpu",
+      "familia": "imagem",
+      "so": "linux",
+      "backend": "cpu",
+      "executavel": "sd-server",
+      "arquivo": {
+        "nome": "ignis-imagem-linux-cpu.tar.gz",
+        "sha256": "d2d06fa16dedb9a7bb30be220e6ebdcd75b30e225316342d3e35596a1aed8d2a",
+        "tamanho": 18918545
       }
     }
   ],
@@ -225,6 +323,107 @@
       "licenca_url": "https://huggingface.co/ggerganov/whisper.cpp",
       "uso_comercial": true,
       "descricao": "Transcrição em ~100 idiomas, leve para o processador."
+    },
+    {
+      "id": "chatterbox-mtl-q8",
+      "familia": "voz-comercial",
+      "nome": "Chatterbox Multilingual (Q8_0)",
+      "perfis": [
+        "placa",
+        "placa-pequena",
+        "processador"
+      ],
+      "repo": "BricksDisplay/Chatterbox-Multilingual-TTS-GGUF",
+      "revisao": "fe6b7d973a511d869b2a11ccd1d06d3d2483f0b3",
+      "arquivos": [
+        {
+          "nome": "chatterbox-mtl-q8_0.gguf",
+          "sha256": "ee9dc99058b8404acb66d6a7e77fef9ffaa2ff49f75e5881ebfdd8a76afa1ea0",
+          "tamanho": 537750272
+        },
+        {
+          "nome": "codec-q8_0.gguf",
+          "sha256": "b69fb014fd02275f65df6b06106efa1799880709dcc24f190e98b9ea60ee706a",
+          "tamanho": 318985600
+        }
+      ],
+      "licenca": "MIT",
+      "licenca_url": "https://huggingface.co/ResembleAI/chatterbox",
+      "uso_comercial": true,
+      "descricao": "Voz em 23 idiomas (português incluso) que pode ir para produto pago. Usa a voz do próprio modelo."
+    },
+    {
+      "id": "z-image-turbo-q4",
+      "familia": "imagem",
+      "nome": "Z-Image Turbo (Q4_0)",
+      "perfis": [
+        "placa"
+      ],
+      "repo": "leejet/Z-Image-Turbo-GGUF",
+      "revisao": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+      "arquivos": [
+        {
+          "nome": "z_image_turbo-Q4_0.gguf",
+          "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5",
+          "tamanho": 3683370944
+        },
+        {
+          "nome": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+          "tamanho": 2497281120,
+          "repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+          "revisao": "a06e946bb6b655725eafa393f4a9745d460374c9"
+        },
+        {
+          "nome": "ae.safetensors",
+          "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+          "tamanho": 335304388,
+          "repo": "Comfy-Org/z_image_turbo",
+          "revisao": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+          "caminho": "split_files/vae/ae.safetensors"
+        }
+      ],
+      "licenca": "Apache 2.0",
+      "licenca_url": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+      "uso_comercial": true,
+      "descricao": "Cria imagens a partir de texto em 8 passos. Para placas com 7 GB ou mais (RX 580 de 8 GB)."
+    },
+    {
+      "id": "z-image-turbo-q3",
+      "familia": "imagem",
+      "nome": "Z-Image Turbo (Q3_K, menor)",
+      "perfis": [
+        "placa-pequena",
+        "processador"
+      ],
+      "repo": "leejet/Z-Image-Turbo-GGUF",
+      "revisao": "c61c0e422dc8b541b7548cf33a4ef8302b0f8085",
+      "arquivos": [
+        {
+          "nome": "z_image_turbo-Q3_K.gguf",
+          "sha256": "4b44bdaa7814f20d7cf144e3939bd93aa32f50660204dd0c2aea5c5376232980",
+          "tamanho": 3143559104
+        },
+        {
+          "nome": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+          "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+          "tamanho": 2497281120,
+          "repo": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+          "revisao": "a06e946bb6b655725eafa393f4a9745d460374c9"
+        },
+        {
+          "nome": "ae.safetensors",
+          "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+          "tamanho": 335304388,
+          "repo": "Comfy-Org/z_image_turbo",
+          "revisao": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+          "caminho": "split_files/vae/ae.safetensors"
+        }
+      ],
+      "licenca": "Apache 2.0",
+      "licenca_url": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+      "uso_comercial": true,
+      "descricao": "Versão menor do Z-Image Turbo, para placas com menos de 7 GB e para o processador (mais lento)."
     }
   ]
 }

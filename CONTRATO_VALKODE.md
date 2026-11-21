@@ -61,19 +61,50 @@ qualquer `api_key` (é ignorada).
   (`qwen3-8b`), importados do Ollama usam `ollama/<nome:tag>`, arquivos usam
   `arquivo/<nome>`.
 - `ignis.embeddings = true` → modelo só de embeddings (não conversa).
+- **Uso comercial** (desde a 0.4.0, pedido da Fornalha), em cada modelo:
+  `ignis.uso_comercial` = `"sim"` (licença permissiva: Apache 2.0, MIT, BSD...), `"nao"`
+  (proíbe uso comercial: CC BY-NC, licenças "research"...) ou `"condicional"` (deixa, com
+  condições: limite de usuários, lista de usos proibidos, compartilhar igual... **ou a licença
+  não foi informada**); `ignis.licenca` (o nome como veio) e `ignis.uso_comercial_nota`
+  (explicação curta). Os do catálogo foram conferidos a dedo; os baixados do Hugging Face são
+  lidos pelo nome da licença do repositório. É uma leitura automática, não um parecer jurídico.
 
 ### `POST /v1/chat/completions` (com e sem streaming)
 Corpo igual ao da OpenAI (`messages`, `max_tokens`, `temperature`, `stream`,
 `tools`, etc.); o Ignis repassa ao llama-server oficial.
 - `model`: id de `/v1/models`. Vazio/`"default"` → usa o modelo carregado, ou o
   padrão escolhido pela pessoa, ou o primeiro de conversa instalado.
-- O primeiro pedido carrega o modelo (pode levar alguns segundos). Um modelo
-  por vez: pedir outro modelo espera as conversas em andamento terminarem e troca.
+- O primeiro pedido carrega o modelo (pode levar alguns segundos). Um modelo de
+  conversa por vez: pedir outro espera as conversas em andamento terminarem e troca.
+- **Conversa + embeddings juntos** (desde a 0.4.0): um modelo de embeddings fica carregado
+  ao lado do de conversa quando os dois cabem; trocar o de conversa não tira o de embeddings.
+  Se a placa não tiver espaço para o de conversa inteiro, o Ignis tira o de embeddings
+  parado primeiro. Cada um descarrega sozinho quando fica parado. `GET /motor/estado` lista os
+  dois em `modelos_carregados`.
 - Streaming: `text/event-stream` com `data: {...}` e `data: [DONE]` no fim.
 - A resposta traz o cabeçalho **`X-Ignis-Requisicao`** (número do pedido).
 - O llama-server inclui `timings` (tokens/s) no fim; o Ignis mostra isso na janela.
 - Campos extras do llama-server passam direto (o corpo é repassado como veio).
 - Pedidos de até **256 MB** (fotos e áudio em base64).
+
+### Saída em JSON com esquema (`response_format`)
+Igual à OpenAI; o llama-server transforma o esquema numa gramática, então a resposta
+**sempre** segue o esquema (com e sem streaming). Testado no CI com o llama-server oficial.
+```json
+{ "model": "qwen3-8b",
+  "messages": [{"role": "user", "content": "Crie um roteiro curto com 2 cenas."}],
+  "response_format": { "type": "json_schema", "json_schema": { "name": "roteiro", "strict": true,
+    "schema": { "type": "object", "additionalProperties": false,
+      "required": ["nome", "cenas"],
+      "properties": {
+        "nome":  { "type": "string" },
+        "cenas": { "type": "array", "minItems": 1, "maxItems": 3, "items": { "type": "string" } } } } } } }
+```
+- `"response_format": {"type": "json_object"}` → qualquer JSON válido.
+- Com modelos que pensam, desligue o pensamento (`"chat_template_kwargs": {"enable_thinking": false}`)
+  para a resposta sair mais rápido; o JSON vem em `content`.
+- Recursos de esquema que a gramática do llama.cpp não cobre (ex.: `pattern` muito complexo,
+  `$ref` externo) são ignorados ou recusados com 400 pelo llama-server.
 
 ### Modelos que "pensam" (Qwen3 e outros)
 O raciocínio vem separado: `message.reasoning_content` (streaming:
@@ -105,10 +136,30 @@ aceitam mensagens no formato da OpenAI, repassadas ao llama-server com `--mmproj
 Precisam ser preparadas uma vez (janela → **Voz**, ou `POST /motor/audio/preparar`).
 Sem preparar: `503` com `code: "audio_nao_preparado"`. Detalhes e exemplos em
 [docs/IGNIS_PARA_AZURIA.md](docs/IGNIS_PARA_AZURIA.md).
-- `POST /v1/audio/speech` — JSON `{"input", "voice"?, "language"?, "response_format": "wav"|"pcm", "seed"?}` → `audio/wav` 24 kHz (sem formato, ou outro formato: WAV) (OmniVoice, licença CC BY-NC 4.0).
+- `POST /v1/audio/speech` — JSON `{"model"?, "input", "voice"?, "language"?, "response_format": "wav"|"pcm", "seed"?}` → `audio/wav` 24 kHz (sem formato, ou outro formato: WAV). O campo **`model`** escolhe a voz:
+  - `"chatterbox"` (ou `"chatterbox-multilingual"`, `"voz-comercial"`): **Chatterbox Multilingual, licença MIT, pode ir para produto pago** (desde a 0.4.0, pedido da Fornalha). 23 idiomas pelo `language` (`"pt"`, `"Portuguese"`, `"en"`...; padrão português). Usa a voz do próprio modelo (sem clonagem pelo Ignis; `voice` é ignorado). O Ignis prepara o texto como o modelo espera (minúsculas, Unicode NFKD e a marca do idioma). Chinês e japonês ainda não recebem a conversão de escrita que o modelo pede e podem sair ruins. Preparar: `POST /motor/audio/preparar {"familias":["voz-comercial"]}`.
+  - qualquer outro valor (ou nenhum): **OmniVoice, licença CC BY-NC 4.0 (só uso não comercial)**, com vozes clonadas.
 - `GET/POST /v1/audio/voices`, `DELETE /v1/audio/voices/{nome}` — vozes clonadas `{"name", "ref_text", "wav_b64"}`, guardadas pelo Ignis.
 - `POST /v1/audio/transcriptions` e `/v1/audio/translations` — multipart igual à OpenAI (`file`, `language`, `response_format`: `json`/`text`/`srt`/`vtt`/`verbose_json`) (Whisper, MIT).
-- Em `GET /v1/models` aparecem `omnivoice` (`"ignis": {"tipo": "voz"}`) e `whisper-1` (`"ignis": {"tipo": "transcricao"}`) quando preparados.
+- Em `GET /v1/models` aparecem `omnivoice` (`"ignis": {"tipo": "voz"}`), `chatterbox` (`"ignis": {"tipo": "voz"}`), `whisper-1` (`"ignis": {"tipo": "transcricao"}`) e `z-image-turbo` (`"ignis": {"tipo": "imagem"}`) quando preparados, com `licenca` e `uso_comercial`.
+
+### Geração de imagem (desde a 0.4.0, pedido da Fornalha)
+`POST /v1/images/generations` no formato da OpenAI, com o **stable-diffusion.cpp** (`sd-server`)
+e o **Z-Image Turbo (Apache 2.0, uso comercial permitido)**. Roda pelo **Vulkan** (AMD,
+Intel e NVIDIA, sem CUDA nem ROCm, ex.: RX 580) ou no processador. Preparar uma vez:
+`POST /motor/audio/preparar {"familias":["imagem"]}` (≈6,5 GB na placa de 7 GB ou mais;
+versão menor do modelo nas placas menores e no processador).
+```json
+{ "prompt": "um gato laranja dormindo num sofá azul", "n": 1, "size": "1024x1024",
+  "output_format": "png", "seed": 42, "steps": 8, "negative_prompt": "borrado" }
+```
+- Resposta: `{"created", "data": [{"b64_json": "..."}], "ignis": {"motor", "backend", "modelo", "segundos"}}`.
+  Só `b64_json` (`"response_format": "url"` → 400: não há endereço, tudo fica no computador).
+- `size`: `LARGURAxALTURA`, 64 a 2048, múltiplos de 16 (ou `"auto"`). Sem `size`: 1024x1024 na
+  placa, 512x512 no processador. `n`: 1 a 4. `steps`: 1 a 50 (padrão 8, o Turbo foi feito para isso).
+- `output_format`: `png` (padrão), `jpeg` ou `webp`; `output_compression` 0 a 100.
+- Antes de gerar na placa, o Ignis tira da placa o modelo de conversa parado (avisa em `avisos`).
+  Com a placa reservada (`/motor/reservar`), o pedido é recusado com 503 `placa_reservada`.
 
 ### `POST /v1/embeddings`
 Só com modelo de embeddings (ex.: `qwen3-embedding-0.6b`). Sem `model` → usa o
@@ -131,6 +182,7 @@ Sempre neste formato (compatível com a OpenAI, mais `erro` em português):
 | 503 | `ignis_pausado` | pessoa pausou o Ignis | avisar "Ignis pausado" |
 | 503 | `sem_motor` | Ignis ainda não foi preparado | pedir para abrir o Ignis e clicar em Preparar |
 | 503 | `sem_modelo` | nenhum modelo instalado | pedir para baixar um modelo no Ignis |
+| 503 | `placa_reservada` | a placa foi reservada por outro programa (`/motor/reservar`) | esperar a reserva acabar ou liberar |
 
 ## 4. Rotas próprias (`/motor/*`)
 Todas respondem JSON. `POST` aceita corpo JSON.
@@ -139,6 +191,10 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 |---|---|
 | `GET /motor/estado` | Tudo de uma vez: `fase` (`parado`, `carregando`, `pronto`, `pausado`, `testando`, `preparando`), `fase_texto`, `placa`, `motor` em uso, `modelo` carregado (contexto, camadas na placa), `velocidade` (`leitura_tps`, `geracao_tps`), `porta`, `api.endereco`, `teste` (resultados do teste de velocidade), `precisa_preparar`, `tarefas` (downloads), `avisos`, `requisicoes_ativas` |
 | `GET /motor/versao` | Versões (seção 1) |
+| `GET /motor/estado` (desde a 0.4.0) | Também: `aceleradores` (`cuda`, `rocm`, `vulkan`, `processador`, cada um com `existe` (a placa e o sistema têm), `disponivel` (o Ignis consegue usar), `motor_instalado`, `variante`, `motivo`, `dica`) e `em_uso`; `vram` (`placa`, `total_mb`, `livre_mb`); `reserva` (`{"ativa": false}` sem reserva); `modelos_carregados` (conversa e embeddings) |
+| `POST /motor/reservar` `{"mb":12000, "minutos":15}` | Reserva a placa para outro programa (ex.: TRELLIS.2): para as conversas, tira da memória os modelos, a voz e a imagem, e não carrega nada até a reserva acabar (pedidos de modelo respondem 503 `placa_reservada`). Responde `{"ok", "reserva": {"ativa", "mb", "desde", "ate", "restante_seg"}, "descarregados", "vram_total_mb", "vram_livre_mb", "suficiente"}` (`suficiente`: a memória livre medida depois de descarregar chega aos `mb` pedidos; `null` sem `mb`). `minutos` padrão 15, máximo 240; `minutos: 0` libera. Pedir de novo troca a reserva |
+| `GET /motor/reservar` | A reserva atual (`{"ativa": false}` sem reserva) |
+| `POST /motor/reservar/liberar` (ou `DELETE /motor/reservar`) | Libera antes da hora |
 | `GET /motor/modelos` | `instalados` (com `encaixe`: `placa`/`dividido`/`processador`/`nao-cabe`), `catalogo` (com `recomendado`, `rotulo`, licença, tamanho, `parcial` baixado) e `tarefas` |
 | `POST /motor/modelos/baixar` `{"id":"qwen3-8b"}` | Baixa do catálogo (retoma se já houver parte) |
 | `POST /motor/modelos/cancelar` `{"id":"qwen3-8b"}` | Cancela (a parte baixada fica guardada) |
@@ -158,9 +214,9 @@ Todas respondem JSON. `POST` aceita corpo JSON.
 | `POST /motor/detectar` | Detecta a placa de novo |
 | `GET /motor/motores` | Candidatos (disponível/instalado/motivo/dica), ordem de uso, motor forçado |
 | `POST /motor/motores/forcar` `{"variante":"linux-vulkan"}` ou `{"variante":null}` | Força um motor (ou volta ao automático) |
-| `GET /motor/audio` | Voz e transcrição: `preparado`, `falta_baixar`, `modelo` (com `licenca` e `uso_comercial`), `motores`, `rodando`; e `vozes` |
-| `POST /motor/audio/preparar` `{"familias":["voz","transcricao"]}` | Baixa os motores (Vulkan e processador) e o modelo de cada família |
-| `POST /motor/audio/descarregar` | Tira a voz e a transcrição da memória |
+| `GET /motor/audio` | Voz, transcrição, voz comercial e imagem (chaves `voz`, `transcricao`, `voz-comercial`, `imagem`): `preparado`, `falta_baixar`, `modelo` (com `licenca` e `uso_comercial`), `motores`, `rodando`; e `vozes` |
+| `POST /motor/audio/preparar` `{"familias":["voz","transcricao","voz-comercial","imagem"]}` | Baixa os motores (Vulkan e processador) e o modelo de cada família. Sem `familias`: voz e transcrição |
+| `POST /motor/audio/descarregar` | Tira a voz, a transcrição, a voz comercial e a imagem da memória |
 | `POST /motor/audio/teste` `{"texto"?, "voz"?}` | Gera uma fala de teste: `{"wav_b64", "segundos", "motor", "modelo"}` |
 | `GET /motor/config` / `POST /motor/config` | Configurações (`porta`, `descarregar_apos_min`, `contexto_preferido`, `abrir_com_computador`, `procurar_atualizacoes` (aviso de versão nova uma vez por dia, ligado por padrão; o nome antigo `procurar_atualizacoes_sozinho` ainda é aceito), `contexto_automatico` (padrão `true`), `cache_kv` (`"f16"` padrão ou `"q8_0"`), `llama_server_proprio`, `modelo_padrao`, `botoes_janela`: `auto`/`windows`/`gnome`/`kde`/`mac`/`matsu`) |
 | `GET /motor/atualizacoes`, `POST /motor/atualizacoes/procurar`, `POST /motor/atualizacoes/aplicar` `{"item":"app"\|"motor"\|"catalogo"}` | Atualizações (nunca no meio de uma conversa). `"app"` baixa a versão nova do Ignis para o tipo de instalação (`instalacao` em `/motor/estado`), confere o SHA-256, fecha, instala e abre de novo |
